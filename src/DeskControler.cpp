@@ -7,6 +7,8 @@
 #include <QStandardPaths>
 #include <QScrollBar>
 #include <QMessageBox>
+#include <QKeyEvent>
+#include <QMouseEvent>
 
 #include <QtAndroidExtras/QtAndroid>
 #include <QtAndroidExtras/QAndroidJniObject>
@@ -45,6 +47,12 @@ DeskControler::DeskControler(QWidget* parent)
 
     // 应用重新激活
     connect(qApp, &QGuiApplication::applicationStateChanged, this, &DeskControler::onApplicationStateChanged);
+
+    // ============ 启用Kiosk模式 ============
+    // 注意: 如需禁用Kiosk模式,请注释掉下面这行
+#ifdef Q_OS_ANDROID
+    enableKioskMode();
+#endif
 }
 
 DeskControler::~DeskControler()
@@ -593,4 +601,120 @@ void DeskControler::onApplicationStateChanged(Qt::ApplicationState state)
         // m_scrollArea->show();
         m_scrollArea->raise();
     }
+
+    // Kiosk模式: 应用激活时重新隐藏系统UI
+#ifdef Q_OS_ANDROID
+    if (state == Qt::ApplicationActive && m_kioskModeEnabled)
+    {
+        QAndroidJniObject::callStaticMethod<void>(
+            "org/qtproject/example/DeskControler/KioskHelper",
+            "hideSystemUI",
+            "(Landroid/app/Activity;)V",
+            QtAndroid::androidActivity().object()
+        );
+    }
+#endif
+}
+
+// ============ Kiosk模式实现 ============
+
+void DeskControler::enableKioskMode()
+{
+#ifdef Q_OS_ANDROID
+    LogWidget::instance()->addLog("启用Kiosk模式", LogWidget::Info);
+
+    m_kioskModeEnabled = true;
+
+    // 调用Android端的Kiosk模式
+    QAndroidJniObject::callStaticMethod<void>(
+        "org/qtproject/example/DeskControler/KioskHelper",
+        "enableKioskMode",
+        "(Landroid/app/Activity;)V",
+        QtAndroid::androidActivity().object()
+    );
+
+    LogWidget::instance()->addLog("Kiosk模式已启用 - 调试退出: 快速点击左上角5次", LogWidget::Info);
+#endif
+}
+
+void DeskControler::disableKioskMode()
+{
+#ifdef Q_OS_ANDROID
+    LogWidget::instance()->addLog("禁用Kiosk模式", LogWidget::Info);
+
+    m_kioskModeEnabled = false;
+
+    // 调用Android端禁用Kiosk模式
+    QAndroidJniObject::callStaticMethod<void>(
+        "org/qtproject/example/DeskControler/KioskHelper",
+        "disableKioskMode",
+        "(Landroid/app/Activity;)V",
+        QtAndroid::androidActivity().object()
+    );
+#endif
+}
+
+void DeskControler::keyPressEvent(QKeyEvent *event)
+{
+#ifdef Q_OS_ANDROID
+    // Kiosk模式: 拦截返回键
+    if (m_kioskModeEnabled && event->key() == Qt::Key_Back)
+    {
+        LogWidget::instance()->addLog("Kiosk模式: 返回键已被拦截", LogWidget::Info);
+        event->accept();
+        return;
+    }
+#endif
+
+    QWidget::keyPressEvent(event);
+}
+
+void DeskControler::mousePressEvent(QMouseEvent *event)
+{
+    // ============ 调试退出功能 ============
+    // 在左上角区域连续快速点击5次可退出应用
+    // 注意: 此功能仅供调试使用，正式发布时应删除此段代码
+
+#ifdef Q_OS_ANDROID
+    if (m_kioskModeEnabled)
+    {
+        QPoint pos = event->pos();
+
+        // 检查是否点击在左上角区域
+        if (pos.x() < DEBUG_EXIT_TAP_AREA_SIZE && pos.y() < DEBUG_EXIT_TAP_AREA_SIZE)
+        {
+            // 检查是否超时
+            if (!m_debugExitTimer.isValid() || m_debugExitTimer.elapsed() > DEBUG_EXIT_TAP_TIMEOUT_MS)
+            {
+                // 重新开始计数
+                m_debugExitTapCount = 1;
+                m_debugExitTimer.start();
+                LogWidget::instance()->addLog(QString("调试退出: 点击 %1/%2").arg(m_debugExitTapCount).arg(DEBUG_EXIT_TAP_COUNT), LogWidget::Info);
+            }
+            else
+            {
+                m_debugExitTapCount++;
+                LogWidget::instance()->addLog(QString("调试退出: 点击 %1/%2").arg(m_debugExitTapCount).arg(DEBUG_EXIT_TAP_COUNT), LogWidget::Info);
+
+                if (m_debugExitTapCount >= DEBUG_EXIT_TAP_COUNT)
+                {
+                    LogWidget::instance()->addLog("调试退出: 触发退出!", LogWidget::Warning);
+
+                    // 调用Android端退出
+                    QAndroidJniObject::callStaticMethod<void>(
+                        "org/qtproject/example/DeskControler/KioskHelper",
+                        "exitApp",
+                        "(Landroid/app/Activity;)V",
+                        QtAndroid::androidActivity().object()
+                    );
+
+                    // 也在Qt层面退出
+                    qApp->quit();
+                }
+            }
+        }
+    }
+#endif
+
+    QWidget::mousePressEvent(event);
 }
