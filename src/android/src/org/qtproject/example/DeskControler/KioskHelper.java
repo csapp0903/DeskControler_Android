@@ -321,19 +321,26 @@ public class KioskHelper {
                 @Override
                 public void run() {
                     try {
-                        // Device Owner模式下需要先清除白名单再停止Lock Task
+                        DevicePolicyManager dpm = (DevicePolicyManager) activity.getSystemService(Context.DEVICE_POLICY_SERVICE);
+                        ComponentName adminComponent = new ComponentName(activity, MyDeviceAdminReceiver.class);
+
+                        if (dpm != null && dpm.isDeviceOwnerApp(activity.getPackageName())) {
+                            // 1. 清除默认启动器设置
+                            Log.i(TAG, "调试退出: 清除默认启动器设置");
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                dpm.clearPackagePersistentPreferredActivities(adminComponent, activity.getPackageName());
+                            }
+
+                            // 2. 清除Lock Task白名单
+                            Log.i(TAG, "调试退出: 清除Lock Task白名单");
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                dpm.setLockTaskPackages(adminComponent, new String[]{});
+                            }
+                        }
+
+                        // 3. 停止Lock Task模式
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                             try {
-                                DevicePolicyManager dpm = (DevicePolicyManager) activity.getSystemService(Context.DEVICE_POLICY_SERVICE);
-                                ComponentName adminComponent = new ComponentName(activity, MyDeviceAdminReceiver.class);
-
-                                if (dpm != null && dpm.isDeviceOwnerApp(activity.getPackageName())) {
-                                    Log.i(TAG, "调试退出: 清除Lock Task白名单");
-                                    // 先清除白名单
-                                    dpm.setLockTaskPackages(adminComponent, new String[]{});
-                                }
-
-                                // 停止Lock Task模式
                                 activity.stopLockTask();
                                 Log.i(TAG, "调试退出: Lock Task已停止");
                             } catch (Exception e) {
@@ -343,7 +350,7 @@ public class KioskHelper {
 
                         showSystemUI(activity);
 
-                        // 延迟退出，确保Lock Task完全停止
+                        // 4. 延迟退出，确保设置生效
                         handler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
@@ -357,19 +364,19 @@ public class KioskHelper {
                                     @Override
                                     public void run() {
                                         Log.i(TAG, "调试退出: 进程退出");
-                                        System.exit(0);
+                                        android.os.Process.killProcess(android.os.Process.myPid());
                                     }
                                 }, 500);
                             }
                         }, 500);
                     } catch (Exception e) {
                         Log.e(TAG, "调试退出异常: " + e.getMessage());
-                        System.exit(0);
+                        android.os.Process.killProcess(android.os.Process.myPid());
                     }
                 }
             });
         } else {
-            System.exit(0);
+            android.os.Process.killProcess(android.os.Process.myPid());
         }
     }
 
