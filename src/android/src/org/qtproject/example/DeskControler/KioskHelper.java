@@ -311,7 +311,7 @@ public class KioskHelper {
      * 退出应用（调试用）
      */
     public static void exitApp(final Activity activity) {
-        Log.i(TAG, "调试退出: 退出应用");
+        Log.i(TAG, "调试退出: 开始退出流程");
 
         isKioskEnabled = false;
         stopFocusMonitor();
@@ -321,25 +321,49 @@ public class KioskHelper {
                 @Override
                 public void run() {
                     try {
-                        // 停止锁定任务
+                        // Device Owner模式下需要先清除白名单再停止Lock Task
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                             try {
+                                DevicePolicyManager dpm = (DevicePolicyManager) activity.getSystemService(Context.DEVICE_POLICY_SERVICE);
+                                ComponentName adminComponent = new ComponentName(activity, MyDeviceAdminReceiver.class);
+
+                                if (dpm != null && dpm.isDeviceOwnerApp(activity.getPackageName())) {
+                                    Log.i(TAG, "调试退出: 清除Lock Task白名单");
+                                    // 先清除白名单
+                                    dpm.setLockTaskPackages(adminComponent, new String[]{});
+                                }
+
+                                // 停止Lock Task模式
                                 activity.stopLockTask();
+                                Log.i(TAG, "调试退出: Lock Task已停止");
                             } catch (Exception e) {
-                                // 忽略
+                                Log.e(TAG, "调试退出: stopLockTask失败: " + e.getMessage());
                             }
                         }
 
                         showSystemUI(activity);
-                        activity.finishAffinity();
 
+                        // 延迟退出，确保Lock Task完全停止
                         handler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
-                                System.exit(0);
+                                try {
+                                    activity.finishAffinity();
+                                } catch (Exception e) {
+                                    Log.e(TAG, "finishAffinity失败: " + e.getMessage());
+                                }
+
+                                handler.postDelayed(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        Log.i(TAG, "调试退出: 进程退出");
+                                        System.exit(0);
+                                    }
+                                }, 500);
                             }
-                        }, 300);
+                        }, 500);
                     } catch (Exception e) {
+                        Log.e(TAG, "调试退出异常: " + e.getMessage());
                         System.exit(0);
                     }
                 }
