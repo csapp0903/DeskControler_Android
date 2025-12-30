@@ -9,9 +9,11 @@
 #include <QMessageBox>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QTimer>
 
 #include <QtAndroidExtras/QtAndroid>
 #include <QtAndroidExtras/QAndroidJniObject>
+#include <QtAndroidExtras/QAndroidJniEnvironment>
 
 #include "VideoWidget.h"
 #include "LogWidget.h"
@@ -50,8 +52,11 @@ DeskControler::DeskControler(QWidget* parent)
 
     // ============ 启用Kiosk模式 ============
     // 注意: 如需禁用Kiosk模式,请注释掉下面这行
+    // 延迟启用，等待Activity完全初始化
 #ifdef Q_OS_ANDROID
-    enableKioskMode();
+    QTimer::singleShot(1000, this, [this]() {
+        enableKioskMode();
+    });
 #endif
 }
 
@@ -623,6 +628,18 @@ void DeskControler::enableKioskMode()
 #ifdef Q_OS_ANDROID
     LogWidget::instance()->addLog("启用Kiosk模式", LogWidget::Info);
 
+    // 检查Activity是否有效
+    QAndroidJniObject activity = QtAndroid::androidActivity();
+    if (!activity.isValid())
+    {
+        LogWidget::instance()->addLog("Kiosk模式: Activity无效，稍后重试", LogWidget::Warning);
+        // 延迟重试
+        QTimer::singleShot(500, this, [this]() {
+            enableKioskMode();
+        });
+        return;
+    }
+
     m_kioskModeEnabled = true;
 
     // 调用Android端的Kiosk模式
@@ -630,8 +647,19 @@ void DeskControler::enableKioskMode()
         "org/qtproject/example/DeskControler/KioskHelper",
         "enableKioskMode",
         "(Landroid/app/Activity;)V",
-        QtAndroid::androidActivity().object()
+        activity.object()
     );
+
+    // 检查JNI异常
+    QAndroidJniEnvironment env;
+    if (env->ExceptionCheck())
+    {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        LogWidget::instance()->addLog("Kiosk模式: JNI调用异常", LogWidget::Error);
+        m_kioskModeEnabled = false;
+        return;
+    }
 
     LogWidget::instance()->addLog("Kiosk模式已启用 - 调试退出: 快速点击左上角5次", LogWidget::Info);
 #endif
