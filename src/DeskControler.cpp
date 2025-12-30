@@ -626,21 +626,31 @@ void DeskControler::onApplicationStateChanged(Qt::ApplicationState state)
 void DeskControler::enableKioskMode()
 {
 #ifdef Q_OS_ANDROID
-    LogWidget::instance()->addLog("启用Kiosk模式", LogWidget::Info);
+    const int MAX_RETRY = 5;  // 最大重试次数
+
+    LogWidget::instance()->addLog(QString("启用Kiosk模式 (尝试 %1/%2)").arg(m_kioskRetryCount + 1).arg(MAX_RETRY), LogWidget::Info);
 
     // 检查Activity是否有效
     QAndroidJniObject activity = QtAndroid::androidActivity();
     if (!activity.isValid())
     {
-        LogWidget::instance()->addLog("Kiosk模式: Activity无效，稍后重试", LogWidget::Warning);
-        // 延迟重试
-        QTimer::singleShot(500, this, [this]() {
-            enableKioskMode();
-        });
+        m_kioskRetryCount++;
+        if (m_kioskRetryCount < MAX_RETRY)
+        {
+            LogWidget::instance()->addLog("Kiosk模式: Activity无效，稍后重试", LogWidget::Warning);
+            QTimer::singleShot(500, this, [this]() {
+                enableKioskMode();
+            });
+        }
+        else
+        {
+            LogWidget::instance()->addLog("Kiosk模式: 重试次数已用尽，放弃启用", LogWidget::Error);
+        }
         return;
     }
 
     m_kioskModeEnabled = true;
+    m_kioskRetryCount = 0;  // 重置重试计数
 
     // 调用Android端的Kiosk模式
     QAndroidJniObject::callStaticMethod<void>(
@@ -656,7 +666,7 @@ void DeskControler::enableKioskMode()
     {
         env->ExceptionDescribe();
         env->ExceptionClear();
-        LogWidget::instance()->addLog("Kiosk模式: JNI调用异常", LogWidget::Error);
+        LogWidget::instance()->addLog("Kiosk模式: JNI调用异常，Java类可能未正确加载", LogWidget::Error);
         m_kioskModeEnabled = false;
         return;
     }

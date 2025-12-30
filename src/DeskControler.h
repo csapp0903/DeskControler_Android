@@ -86,4 +86,5 @@ private:
     bool m_kioskModeEnabled = false;        // Kiosk模式是否启用
     int m_debugExitTapCount = 0;            // 调试退出点击计数
     QElapsedTimer m_debugExitTimer;         // 调试退出计时器
+    int m_kioskRetryCount = 0;              // Kiosk模式启用重试计数
 };

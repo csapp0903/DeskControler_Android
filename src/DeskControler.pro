@@ -56,6 +56,9 @@ include($$PWD/../3rdpart/protobuf/protobuf.pri)
 # 添加依赖库到APK
 android
 {
+    # 指定Android源文件目录(包含AndroidManifest.xml和Java源文件)
+    ANDROID_PACKAGE_SOURCE_DIR = $$PWD/android
+
     ANDROID_EXTRA_LIBS += $$PWD/../3rdpart/ffmpeg/lib/libavcodec.so
     ANDROID_EXTRA_LIBS += $$PWD/../3rdpart/ffmpeg/lib/libavfilter.so
     ANDROID_EXTRA_LIBS += $$PWD/../3rdpart/ffmpeg/lib/libavformat.so
