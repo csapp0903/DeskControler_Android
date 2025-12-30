@@ -15,7 +15,6 @@ extern "C" {
 
 #include <QQueue>
 #include <QMutex>
-#include <QTimer>
 
 class VideoDecoderWorker : public QObject
 {
@@ -34,6 +33,8 @@ signals:
     void frameDecoded(const QImage& image);
 
 private:
+    void processQueue();
+
     const AVCodec* codec = nullptr;
     AVCodecContext* codecCtx = nullptr;
     AVFrame* frame = nullptr;
@@ -41,7 +42,6 @@ private:
 
     mutable QMutex m_mutex;
     QQueue<QByteArray> m_queue;
-    QTimer m_timer;
 };
 
 #endif // VIDEODECODERWORKER_H

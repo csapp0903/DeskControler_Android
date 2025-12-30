@@ -253,52 +253,78 @@ bool DeskControler::connectToWiFi(const QString &ssid, const QString &password)
 
 void DeskControler::handleCameraImage(const QImage &image)
 {
+    // 显示预览（在主线程，保持流畅）
     QPixmap pixmap = QPixmap::fromImage(image);
     m_cameraLabel->setPixmap(pixmap);
 
-    QString info = QString::fromLocal8Bit(m_decoder.decodeImage(image).toLatin1());
-    LogWidget::instance()->addLog(QString("Camera Info:%1").arg(info), LogWidget::Info);
-    if (info.contains(";;"))
+    // 如果正在解码，丢弃当前帧以避免阻塞
+    if (m_isDecoding.load())
     {
-        QMap<QString, QString> result;
-        QStringList groups = info.split(";;", Qt::SkipEmptyParts);
-        for (const QString &group : groups)
-        {
-            QStringList keyValue = group.split(":");
-            if (keyValue.size() >= 2)
-            {
-                QString key = keyValue[0].trimmed().toUpper();
-                QString value = keyValue[1].trimmed();
-
-                // 存储到结果映射中
-                result.insert(key, value);
-            }
-        }
-
-        if (result.contains("WIFI") && result.contains("P")
-            && result.contains("UUID") && result.contains("IP"))
-        {
-            ui.ipLineEdit_->setText(result["IP"]);
-            ui.lineEdit->setText(result["UUID"]);
-            ui.portLineEdit_->setText(result["PORT"]);
-
-            QString ssid = result["WIFI"];
-            QString password = result["P"];
-
-            stopCamera();
-            qDebug() << "-----Start ConnectToWiFi:" << ssid << password;
-            LogWidget::instance()->addLog(QString("Start ConnectToWiFi:%1").arg(ssid), LogWidget::Info);
-
-            connectToWiFi(ssid, password);
-            QThread::msleep(3000);
-
-            qDebug() << "-----Start ConnectToServer:";
-            LogWidget::instance()->addLog(QString("Start ConnectToServer"), LogWidget::Info);
-            onConnectClicked();
-        }
-
-        qDebug() << "-----info:" << result;
+        return;
     }
+
+    // 设置解码标志
+    m_isDecoding.store(true);
+
+    // 深拷贝图像，防止多线程竞争
+    QImage imageCopy = image.copy();
+
+    // 在后台线程执行二维码解码
+    QtConcurrent::run([this, imageCopy]() {
+        QString info = QString::fromLocal8Bit(m_decoder.decodeImage(imageCopy).toLatin1());
+
+        // 将结果传回主线程处理
+        QMetaObject::invokeMethod(this, [this, info]() {
+            // 重置解码标志
+            m_isDecoding.store(false);
+
+            LogWidget::instance()->addLog(QString("Camera Info:%1").arg(info), LogWidget::Info);
+
+            if (info.contains(";;"))
+            {
+                QMap<QString, QString> result;
+                QStringList groups = info.split(";;", Qt::SkipEmptyParts);
+                for (const QString &group : groups)
+                {
+                    QStringList keyValue = group.split(":");
+                    if (keyValue.size() >= 2)
+                    {
+                        QString key = keyValue[0].trimmed().toUpper();
+                        QString value = keyValue[1].trimmed();
+
+                        // 存储到结果映射中
+                        result.insert(key, value);
+                    }
+                }
+
+                if (result.contains("WIFI") && result.contains("P")
+                    && result.contains("UUID") && result.contains("IP"))
+                {
+                    ui.ipLineEdit_->setText(result["IP"]);
+                    ui.lineEdit->setText(result["UUID"]);
+                    ui.portLineEdit_->setText(result["PORT"]);
+
+                    QString ssid = result["WIFI"];
+                    QString password = result["P"];
+
+                    stopCamera();
+                    qDebug() << "-----Start ConnectToWiFi:" << ssid << password;
+                    LogWidget::instance()->addLog(QString("Start ConnectToWiFi:%1").arg(ssid), LogWidget::Info);
+
+                    connectToWiFi(ssid, password);
+
+                    // 使用定时器替代阻塞式 msleep，避免阻塞主线程
+                    QTimer::singleShot(3000, this, [this]() {
+                        qDebug() << "-----Start ConnectToServer:";
+                        LogWidget::instance()->addLog(QString("Start ConnectToServer"), LogWidget::Info);
+                        onConnectClicked();
+                    });
+                }
+
+                qDebug() << "-----info:" << result;
+            }
+        }, Qt::QueuedConnection);
+    });
 }
 
 void DeskControler::handleCloseBtnClicked()

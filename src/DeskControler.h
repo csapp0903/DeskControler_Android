@@ -4,6 +4,8 @@
 #include <QCamera>
 #include <QScrollArea>
 #include <QElapsedTimer>
+#include <QtConcurrent>
+#include <atomic>
 
 #include "NetworkManager.h"
 #include "VideoReceiver.h"
@@ -81,6 +83,9 @@ private:
     QCamera *m_camera = nullptr;
     QLabel *m_cameraLabel = nullptr;
     QZXing m_decoder;
+
+    // ============ 二维码异步解码 ============
+    std::atomic<bool> m_isDecoding{false};  // 防止同时启动多个解码任务
 
     // ============ Kiosk模式相关成员变量 ============
     bool m_kioskModeEnabled = false;        // Kiosk模式是否启用

@@ -32,7 +32,12 @@ private slots:
     void onSocketDisconnected();
 
 private:
+    void compactBuffer();
+
     QTcpSocket* socket;
     MessageHandler messageHandler;  // 内部包含消息处理逻辑
     QByteArray m_buffer;
+    int m_bufferOffset = 0;         // 缓冲区读取偏移量，避免频繁内存移动
+
+    static const int BUFFER_COMPACT_THRESHOLD = 4 * 1024 * 1024;  // 4MB 阈值
 };

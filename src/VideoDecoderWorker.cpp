@@ -32,36 +32,6 @@ VideoDecoderWorker::VideoDecoderWorker(QObject* parent)
     {
         LogWidget::instance()->addLog(QString("Could not allocate video frame"), LogWidget::Error);
     }
-
-    m_timer.setInterval(50);
-    connect(&m_timer, &QTimer::timeout, this, [&](){
-
-        QMutexLocker locker(&m_mutex);
-
-        QElapsedTimer timer;
-        timer.start();
-
-        if (m_queue.isEmpty())
-        {
-            return;
-        }
-
-        QByteArray data = m_queue.dequeue();
-        QImage image;
-        bool ret = image.loadFromData(data, "JPG");
-        if (ret)
-        {
-            QString str1 = QString("QImage loadFromData took: %1 ms image w h: %2 %3").arg(QString::number(timer.elapsed()),
-                                                                                           QString::number(image.width()),
-                                                                                           QString::number(image.height()));
-            LogWidget::instance()->addLog(str1, LogWidget::Info);
-            qDebug() << str1;
-
-            emit frameDecoded(image);
-        }
-    });
-
-    m_timer.start();
 }
 
 VideoDecoderWorker::~VideoDecoderWorker()
@@ -88,34 +58,57 @@ void VideoDecoderWorker::cleanup()
     }
 }
 
+void VideoDecoderWorker::processQueue()
+{
+    // 持续处理队列中的所有数据包
+    while (true)
+    {
+        QByteArray data;
+        {
+            QMutexLocker locker(&m_mutex);
+            if (m_queue.isEmpty())
+            {
+                break;
+            }
+            data = m_queue.dequeue();
+        }
+        // 解码操作在锁外进行，避免阻塞入队操作
+
+        QElapsedTimer timer;
+        timer.start();
+
+        QImage image;
+        bool ret = image.loadFromData(data, "JPG");
+        if (ret)
+        {
+            QString str1 = QString("QImage loadFromData took: %1 ms image w h: %2 %3").arg(QString::number(timer.elapsed()),
+                                                                                           QString::number(image.width()),
+                                                                                           QString::number(image.height()));
+            LogWidget::instance()->addLog(str1, LogWidget::Info);
+            qDebug() << str1;
+
+            emit frameDecoded(image);
+        }
+    }
+}
+
 void VideoDecoderWorker::decodePacket(const QByteArray &packetData)
 {
-    QElapsedTimer timer;
-    timer.start();
-
-    QMutexLocker locker(&m_mutex);
-    if (m_queue.size() >= QUEUE_IMAGE)
     {
-        m_queue.dequeue();
+        QMutexLocker locker(&m_mutex);
+        if (m_queue.size() >= QUEUE_IMAGE)
+        {
+            m_queue.dequeue();
+        }
+        m_queue.enqueue(packetData);
+
+        QString str = QString("packetData size: %1 queueSize: %2").arg(QString::number(packetData.size()), QString::number(m_queue.size()));
+        qDebug() << str;
+        LogWidget::instance()->addLog(str, LogWidget::Info);
     }
-    m_queue.enqueue(packetData);
 
-    QString str = QString("packetData size: %1 queueSize: %2").arg(QString::number(packetData.size()), QString::number(m_queue.size()));
-    qDebug() << str;
-    LogWidget::instance()->addLog(str, LogWidget::Info);
-
-    // QImage image;
-    // bool ret = image.loadFromData(packetData, "JPG");
-    // if (ret)
-    // {
-    //     QString str1 = QString("QImage loadFromData took: %1 ms image w h: %2 %3").arg(QString::number(timer.elapsed()),
-    //                                                                                    QString::number(image.width()),
-    //                                                                                    QString::number(image.height()));
-    //     qDebug() << str1;
-    //     LogWidget::instance()->addLog(str1, LogWidget::Info);
-
-    //     emit frameDecoded(image);
-    // }
+    // 数据入队后立即处理，无需等待定时器
+    processQueue();
 }
 
 void VideoDecoderWorker::decodePacket1(const QByteArray& packetData)
