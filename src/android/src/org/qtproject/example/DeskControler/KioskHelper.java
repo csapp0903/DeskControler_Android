@@ -2,6 +2,8 @@ package org.qtproject.example.DeskControler;
 
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.app.admin.DevicePolicyManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.os.Build;
 import android.os.Handler;
@@ -12,13 +14,14 @@ import android.view.WindowManager;
 
 /**
  * Kiosk模式辅助类
- * 提供屏幕锁定和防止用户离开应用的功能
+ * 使用Device Owner实现真正的屏幕锁定（无确认框）
  */
 public class KioskHelper {
     private static final String TAG = "KioskHelper";
     private static Handler handler = new Handler(Looper.getMainLooper());
     private static Runnable focusChecker = null;
     private static boolean isKioskEnabled = false;
+    private static boolean isDeviceOwner = false;
 
     /**
      * 启用Kiosk模式
@@ -34,7 +37,6 @@ public class KioskHelper {
         isKioskEnabled = true;
 
         try {
-            // 在UI线程执行
             activity.runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
@@ -45,26 +47,18 @@ public class KioskHelper {
                         // 2. 全屏显示
                         activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
-                        // 3. 防止截屏（可选，增加安全性）
-                        // activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-
-                        // 4. 隐藏系统UI
+                        // 3. 隐藏系统UI
                         hideSystemUI(activity);
 
-                        // 5. 启动屏幕锁定任务模式 (Android 5.0+)
+                        // 4. 检查是否为Device Owner并启动锁定任务模式
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                            try {
-                                activity.startLockTask();
-                                Log.i(TAG, "屏幕锁定任务模式已启动");
-                            } catch (Exception e) {
-                                Log.w(TAG, "startLockTask失败(需要用户确认或Device Owner权限): " + e.getMessage());
-                            }
+                            startLockTaskIfDeviceOwner(activity);
                         }
 
-                        // 6. 监听系统UI变化，自动重新隐藏
+                        // 5. 设置系统UI监听器
                         setupSystemUIListener(activity);
 
-                        // 7. 启动前台监控，确保应用始终在前台
+                        // 6. 启动前台监控
                         startFocusMonitor(activity);
 
                         Log.i(TAG, "Kiosk模式已启用");
@@ -75,6 +69,36 @@ public class KioskHelper {
             });
         } catch (Exception e) {
             Log.e(TAG, "启用Kiosk模式异常: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 检查是否为Device Owner并启动锁定任务模式
+     */
+    private static void startLockTaskIfDeviceOwner(Activity activity) {
+        try {
+            DevicePolicyManager dpm = (DevicePolicyManager) activity.getSystemService(Context.DEVICE_POLICY_SERVICE);
+            ComponentName adminComponent = new ComponentName(activity, MyDeviceAdminReceiver.class);
+
+            if (dpm != null && dpm.isDeviceOwnerApp(activity.getPackageName())) {
+                isDeviceOwner = true;
+                Log.i(TAG, "应用是Device Owner，启用完全锁定模式");
+
+                // 设置锁定任务包白名单
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    dpm.setLockTaskPackages(adminComponent, new String[]{activity.getPackageName()});
+                }
+
+                // 启动锁定任务模式（Device Owner无需确认）
+                activity.startLockTask();
+                Log.i(TAG, "锁定任务模式已启动（无确认框）");
+            } else {
+                isDeviceOwner = false;
+                Log.w(TAG, "应用不是Device Owner，无法完全锁定。请通过ADB设置Device Owner。");
+                Log.w(TAG, "命令: adb shell dpm set-device-owner org.qtproject.example.DeskControler/.MyDeviceAdminReceiver");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "启动锁定任务模式失败: " + e.getMessage());
         }
     }
 
@@ -95,7 +119,7 @@ public class KioskHelper {
                                 hideSystemUI(activity);
                             }
                         }
-                    }, 500);
+                    }, 100);
                 }
             }
         });
@@ -105,7 +129,6 @@ public class KioskHelper {
      * 启动前台监控 - 确保应用始终在前台
      */
     private static void startFocusMonitor(final Activity activity) {
-        // 停止之前的监控
         stopFocusMonitor();
 
         focusChecker = new Runnable() {
@@ -116,8 +139,8 @@ public class KioskHelper {
                 }
 
                 try {
-                    // 检查应用是否在前台
-                    if (!isAppInForeground(activity)) {
+                    // 非Device Owner时需要监控前台状态
+                    if (!isDeviceOwner && !isAppInForeground(activity)) {
                         Log.i(TAG, "检测到应用不在前台，尝试返回前台");
                         bringToForeground(activity);
                     }
@@ -125,8 +148,8 @@ public class KioskHelper {
                     // 确保系统UI隐藏
                     hideSystemUI(activity);
 
-                    // 继续监控
-                    handler.postDelayed(this, 500);
+                    // 继续监控（Device Owner模式下降低频率）
+                    handler.postDelayed(this, isDeviceOwner ? 2000 : 300);
                 } catch (Exception e) {
                     Log.e(TAG, "前台监控异常: " + e.getMessage());
                     handler.postDelayed(this, 1000);
@@ -134,7 +157,7 @@ public class KioskHelper {
             }
         };
 
-        handler.postDelayed(focusChecker, 1000);
+        handler.postDelayed(focusChecker, 500);
         Log.i(TAG, "前台监控已启动");
     }
 
@@ -145,7 +168,6 @@ public class KioskHelper {
         if (focusChecker != null) {
             handler.removeCallbacks(focusChecker);
             focusChecker = null;
-            Log.i(TAG, "前台监控已停止");
         }
     }
 
@@ -154,23 +176,10 @@ public class KioskHelper {
      */
     private static boolean isAppInForeground(Activity activity) {
         try {
-            ActivityManager am = (ActivityManager) activity.getSystemService(Context.ACTIVITY_SERVICE);
-            if (am != null) {
-                // 检查应用是否在运行任务的顶部
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    return activity.hasWindowFocus();
-                } else {
-                    java.util.List<ActivityManager.RunningTaskInfo> tasks = am.getRunningTasks(1);
-                    if (tasks != null && !tasks.isEmpty()) {
-                        String topActivity = tasks.get(0).topActivity.getPackageName();
-                        return topActivity.equals(activity.getPackageName());
-                    }
-                }
-            }
+            return activity.hasWindowFocus();
         } catch (Exception e) {
-            Log.e(TAG, "检查前台状态失败: " + e.getMessage());
+            return true;
         }
-        return true; // 默认认为在前台
     }
 
     /**
@@ -179,20 +188,9 @@ public class KioskHelper {
     private static void bringToForeground(Activity activity) {
         try {
             ActivityManager am = (ActivityManager) activity.getSystemService(Context.ACTIVITY_SERVICE);
-            if (am != null) {
-                // 方法1: moveTaskToFront
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    am.moveTaskToFront(activity.getTaskId(), ActivityManager.MOVE_TASK_WITH_HOME);
-                }
+            if (am != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                am.moveTaskToFront(activity.getTaskId(), ActivityManager.MOVE_TASK_WITH_HOME);
             }
-
-            // 方法2: 重新激活Activity
-            // Intent intent = new Intent(activity, activity.getClass());
-            // intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-            // intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            // activity.startActivity(intent);
-
-            Log.i(TAG, "应用已返回前台");
         } catch (Exception e) {
             Log.e(TAG, "返回前台失败: " + e.getMessage());
         }
@@ -226,12 +224,11 @@ public class KioskHelper {
     }
 
     /**
-     * 禁用Kiosk模式 - 恢复正常显示
+     * 禁用Kiosk模式
      * @param activity 当前Activity
      */
     public static void disableKioskMode(final Activity activity) {
         if (activity == null) {
-            Log.e(TAG, "Activity is null");
             return;
         }
 
@@ -239,33 +236,25 @@ public class KioskHelper {
         isKioskEnabled = false;
 
         try {
-            // 停止前台监控
             stopFocusMonitor();
 
             activity.runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
                     try {
-                        // 停止屏幕锁定任务模式
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        // 停止锁定任务模式
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && isDeviceOwner) {
                             try {
                                 activity.stopLockTask();
-                                Log.i(TAG, "屏幕锁定任务模式已停止");
+                                Log.i(TAG, "锁定任务模式已停止");
                             } catch (Exception e) {
                                 Log.w(TAG, "stopLockTask失败: " + e.getMessage());
                             }
                         }
 
-                        // 移除屏幕常亮
                         activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-                        // 移除全屏
                         activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-
-                        // 恢复系统UI
                         showSystemUI(activity);
-
-                        // 移除监听器
                         activity.getWindow().getDecorView().setOnSystemUiVisibilityChangeListener(null);
 
                         Log.i(TAG, "Kiosk模式已禁用");
@@ -284,19 +273,16 @@ public class KioskHelper {
      */
     public static void showSystemUI(Activity activity) {
         if (activity == null) return;
-
         View decorView = activity.getWindow().getDecorView();
         decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
     }
 
     /**
      * 退出应用（调试用）
-     * @param activity 当前Activity
      */
     public static void exitApp(final Activity activity) {
         Log.i(TAG, "调试退出: 退出应用");
 
-        // 先禁用Kiosk模式
         isKioskEnabled = false;
         stopFocusMonitor();
 
@@ -310,31 +296,38 @@ public class KioskHelper {
                             try {
                                 activity.stopLockTask();
                             } catch (Exception e) {
-                                Log.w(TAG, "stopLockTask失败: " + e.getMessage());
+                                // 忽略
                             }
                         }
 
-                        // 恢复系统UI
                         showSystemUI(activity);
-
-                        // 结束Activity
                         activity.finishAffinity();
 
-                        // 延迟退出进程
                         handler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
                                 System.exit(0);
                             }
-                        }, 500);
+                        }, 300);
                     } catch (Exception e) {
-                        Log.e(TAG, "退出应用失败: " + e.getMessage());
                         System.exit(0);
                     }
                 }
             });
         } else {
             System.exit(0);
+        }
+    }
+
+    /**
+     * 检查是否为Device Owner
+     */
+    public static boolean isDeviceOwner(Context context) {
+        try {
+            DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+            return dpm != null && dpm.isDeviceOwnerApp(context.getPackageName());
+        } catch (Exception e) {
+            return false;
         }
     }
 }
