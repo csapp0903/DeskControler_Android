@@ -6,6 +6,7 @@ import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -36,6 +37,9 @@ public class KioskHelper {
 
         Log.i(TAG, "启用Kiosk模式");
         isKioskEnabled = true;
+
+        // 确保Kiosk组件已启用
+        enableKioskComponents(activity);
 
         try {
             activity.runOnUiThread(new Runnable() {
@@ -323,22 +327,34 @@ public class KioskHelper {
                     try {
                         DevicePolicyManager dpm = (DevicePolicyManager) activity.getSystemService(Context.DEVICE_POLICY_SERVICE);
                         ComponentName adminComponent = new ComponentName(activity, MyDeviceAdminReceiver.class);
+                        PackageManager pm = activity.getPackageManager();
+
+                        // 1. 禁用BootReceiver，防止开机自启动
+                        Log.i(TAG, "调试退出: 禁用BootReceiver");
+                        try {
+                            ComponentName bootReceiver = new ComponentName(activity, BootReceiver.class);
+                            pm.setComponentEnabledSetting(bootReceiver,
+                                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                                    PackageManager.DONT_KILL_APP);
+                        } catch (Exception e) {
+                            Log.e(TAG, "禁用BootReceiver失败: " + e.getMessage());
+                        }
 
                         if (dpm != null && dpm.isDeviceOwnerApp(activity.getPackageName())) {
-                            // 1. 清除默认启动器设置
+                            // 2. 清除默认启动器设置
                             Log.i(TAG, "调试退出: 清除默认启动器设置");
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                                 dpm.clearPackagePersistentPreferredActivities(adminComponent, activity.getPackageName());
                             }
 
-                            // 2. 清除Lock Task白名单
+                            // 3. 清除Lock Task白名单
                             Log.i(TAG, "调试退出: 清除Lock Task白名单");
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                                 dpm.setLockTaskPackages(adminComponent, new String[]{});
                             }
                         }
 
-                        // 3. 停止Lock Task模式
+                        // 4. 停止Lock Task模式
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                             try {
                                 activity.stopLockTask();
@@ -350,10 +366,11 @@ public class KioskHelper {
 
                         showSystemUI(activity);
 
-                        // 4. 延迟退出，确保设置生效
+                        // 5. 延迟退出，确保设置生效
                         handler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
+                                Log.i(TAG, "调试退出: 结束Activity");
                                 try {
                                     activity.finishAffinity();
                                 } catch (Exception e) {
@@ -363,12 +380,12 @@ public class KioskHelper {
                                 handler.postDelayed(new Runnable() {
                                     @Override
                                     public void run() {
-                                        Log.i(TAG, "调试退出: 进程退出");
+                                        Log.i(TAG, "调试退出: 终止进程");
                                         android.os.Process.killProcess(android.os.Process.myPid());
                                     }
-                                }, 500);
+                                }, 300);
                             }
-                        }, 500);
+                        }, 300);
                     } catch (Exception e) {
                         Log.e(TAG, "调试退出异常: " + e.getMessage());
                         android.os.Process.killProcess(android.os.Process.myPid());
@@ -377,6 +394,22 @@ public class KioskHelper {
             });
         } else {
             android.os.Process.killProcess(android.os.Process.myPid());
+        }
+    }
+
+    /**
+     * 重新启用Kiosk组件（应用启动时调用）
+     */
+    public static void enableKioskComponents(Context context) {
+        try {
+            PackageManager pm = context.getPackageManager();
+            ComponentName bootReceiver = new ComponentName(context, BootReceiver.class);
+            pm.setComponentEnabledSetting(bootReceiver,
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                    PackageManager.DONT_KILL_APP);
+            Log.i(TAG, "BootReceiver已启用");
+        } catch (Exception e) {
+            Log.e(TAG, "启用BootReceiver失败: " + e.getMessage());
         }
     }
 
