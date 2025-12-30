@@ -5,6 +5,7 @@ import android.app.ActivityManager;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
@@ -311,6 +312,7 @@ public class KioskHelper {
         decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
     }
 
+
     /**
      * 退出应用（调试用）
      */
@@ -341,7 +343,7 @@ public class KioskHelper {
                         }
 
                         if (dpm != null && dpm.isDeviceOwnerApp(activity.getPackageName())) {
-                            // 2. 清除默认启动器设置
+                            // 2. 清除默认启动器设置 (解除 Device Owner 的强制 Home 设置)
                             Log.i(TAG, "调试退出: 清除默认启动器设置");
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                                 dpm.clearPackagePersistentPreferredActivities(adminComponent, activity.getPackageName());
@@ -366,15 +368,40 @@ public class KioskHelper {
 
                         showSystemUI(activity);
 
-                        // 5. 延迟退出，确保设置生效
+                        // ==========================================
+                        // [关键修复] 跳转到系统设置，打断 Home 重启循环
+                        // ==========================================
+                        try {
+                            // 尝试打开"主屏幕应用"设置，让用户选择原生桌面
+                            Intent intent = new Intent(android.provider.Settings.ACTION_HOME_SETTINGS);
+                            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            if (intent.resolveActivity(activity.getPackageManager()) != null) {
+                                activity.startActivity(intent);
+                            } else {
+                                // 如果没有Home设置页，则打开通用设置页
+                                Intent settingsIntent = new Intent(android.provider.Settings.ACTION_SETTINGS);
+                                settingsIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                activity.startActivity(settingsIntent);
+                            }
+                            Log.i(TAG, "调试退出: 已跳转至系统设置");
+                        } catch (Exception e) {
+                            Log.e(TAG, "跳转系统设置失败: " + e.getMessage());
+                        }
+
+                        // 5. 延迟退出，确保设置页面已经覆盖上来
                         handler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
                                 Log.i(TAG, "调试退出: 结束Activity");
                                 try {
-                                    activity.finishAffinity();
+                                    // 移除从最近任务列表
+                                    activity.finishAndRemoveTask();
                                 } catch (Exception e) {
-                                    Log.e(TAG, "finishAffinity失败: " + e.getMessage());
+                                    try {
+                                        activity.finishAffinity();
+                                    } catch (Exception ex) {
+                                        ex.printStackTrace();
+                                    }
                                 }
 
                                 handler.postDelayed(new Runnable() {
@@ -382,10 +409,11 @@ public class KioskHelper {
                                     public void run() {
                                         Log.i(TAG, "调试退出: 终止进程");
                                         android.os.Process.killProcess(android.os.Process.myPid());
+                                        System.exit(0);
                                     }
-                                }, 300);
+                                }, 500); // 稍微增加延迟，给系统处理 Intent 的时间
                             }
-                        }, 300);
+                        }, 1000); // 增加第一段延迟
                     } catch (Exception e) {
                         Log.e(TAG, "调试退出异常: " + e.getMessage());
                         android.os.Process.killProcess(android.os.Process.myPid());
