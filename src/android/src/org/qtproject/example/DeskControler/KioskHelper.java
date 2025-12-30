@@ -5,6 +5,7 @@ import android.app.ActivityManager;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.IntentFilter;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -89,6 +90,9 @@ public class KioskHelper {
                     dpm.setLockTaskPackages(adminComponent, new String[]{activity.getPackageName()});
                 }
 
+                // 设置为默认启动器（Home）
+                setAsDefaultLauncher(activity, dpm, adminComponent);
+
                 // 启动锁定任务模式（Device Owner无需确认）
                 activity.startLockTask();
                 Log.i(TAG, "锁定任务模式已启动（无确认框）");
@@ -99,6 +103,32 @@ public class KioskHelper {
             }
         } catch (Exception e) {
             Log.e(TAG, "启动锁定任务模式失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 设置应用为默认启动器（Device Owner专用）
+     */
+    private static void setAsDefaultLauncher(Activity activity, DevicePolicyManager dpm, ComponentName adminComponent) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                // 创建HOME Intent过滤器
+                IntentFilter filter = new IntentFilter(android.content.Intent.ACTION_MAIN);
+                filter.addCategory(android.content.Intent.CATEGORY_HOME);
+                filter.addCategory(android.content.Intent.CATEGORY_DEFAULT);
+
+                // 获取Activity组件名
+                ComponentName activityComponent = new ComponentName(
+                        activity.getPackageName(),
+                        "org.qtproject.qt5.android.bindings.QtActivity"
+                );
+
+                // 设置为首选Activity（默认启动器）
+                dpm.addPersistentPreferredActivity(adminComponent, filter, activityComponent);
+                Log.i(TAG, "已设置为默认启动器");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "设置默认启动器失败: " + e.getMessage());
         }
     }
 
