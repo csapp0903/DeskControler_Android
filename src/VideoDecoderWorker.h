@@ -24,11 +24,11 @@ class VideoDecoderWorker : public QObject
 public:
     explicit VideoDecoderWorker(QObject* parent = nullptr);
     ~VideoDecoderWorker();
-    void cleanup();
 
 public slots:
     void decodePacket(const QByteArray& packetData);
     void decodePacket1(const QByteArray& packetData);
+    void cleanup();
 
 signals:
     void frameDecoded(const QImage& image);
@@ -41,7 +41,8 @@ private:
 
     mutable QMutex m_mutex;
     QQueue<QByteArray> m_queue;
-    QTimer m_timer;
+    //QTimer m_timer;
+    QTimer* m_timer = nullptr;
 };
 
 #endif // VIDEODECODERWORKER_H
