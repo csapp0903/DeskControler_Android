@@ -11,6 +11,7 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QTimer>
+#include <QPainter>
 
 #include <QtAndroidExtras/QtAndroid>
 #include <QtAndroidExtras/QAndroidJniObject>
@@ -580,7 +581,67 @@ bool DeskControler::connectToWiFi(const QString &ssid, const QString &password)
 void DeskControler::handleCameraImage(const QImage &image)
 {
     QPixmap pixmap = QPixmap::fromImage(image);
+
+    // ==========================================
+    // [修改] 绘制二维码辅助框 (仅线框，无遮罩)
+    // ==========================================
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing);
+
+    int w = pixmap.width();
+    int h = pixmap.height();
+
+    // 定义扫描框大小 (取短边的 60% 为边长，保持正方形)
+    int boxSize = qMin(w, h) * 0.6;
+    int x = (w - boxSize) / 2;
+    int y = (h - boxSize) / 2;
+
+    // --- [已删除] 半透明背景遮罩绘制代码 ---
+
+    // --- B. 绘制扫描框四角 (医疗蓝/青色) ---
+    // 线条颜色：你可以改为 #4472C4 (医疗蓝) 或 #00BFA5 (青色)
+    QColor cornerColor("#00BFA5");
+    QPen pen(cornerColor);
+    pen.setWidth(6); // 线条宽度
+    p.setPen(pen);
+    p.setBrush(Qt::NoBrush);
+
+    int cornerLen = 40; // 拐角长度
+    // 左上角
+    p.drawLine(x, y, x + cornerLen, y);
+    p.drawLine(x, y, x, y + cornerLen);
+    // 右上角
+    p.drawLine(x + boxSize, y, x + boxSize - cornerLen, y);
+    p.drawLine(x + boxSize, y, x + boxSize, y + cornerLen);
+    // 左下角
+    p.drawLine(x, y + boxSize, x + cornerLen, y + boxSize);
+    p.drawLine(x, y + boxSize, x, y + boxSize - cornerLen);
+    // 右下角
+    p.drawLine(x + boxSize, y + boxSize, x + boxSize - cornerLen, y + boxSize);
+    p.drawLine(x + boxSize, y + boxSize, x + boxSize, y + boxSize - cornerLen);
+
+    // --- C. 绘制提示文字 ---
+    // 增加一点阴影，防止背景太亮看不清文字
+    p.setPen(Qt::black); // 阴影色
+    QFont font = p.font();
+    font.setPixelSize(36);
+    font.setBold(true);
+    p.setFont(font);
+
+    QRect textRect(0, y + boxSize + 30, w, 50);
+    // 先画阴影 (偏移 2px)
+    p.drawText(textRect.translated(2, 2), Qt::AlignCenter, "将二维码放入框内自动扫描");
+
+    // 再画正文 (白色)
+    p.setPen(Qt::white);
+    p.drawText(textRect, Qt::AlignCenter, "将二维码放入框内自动扫描");
+
+    p.end();
+
+    // 2. 显示处理后的图像
     m_cameraLabel->setPixmap(pixmap);
+
+    //m_cameraLabel->setPixmap(pixmap);
 
     QString info = QString::fromLocal8Bit(m_decoder.decodeImage(image).toLatin1());
     LogWidget::instance()->addLog(QString("Camera Info:%1").arg(info), LogWidget::Info);
