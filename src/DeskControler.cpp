@@ -1,5 +1,6 @@
 #include "DeskControler.h"
 #include <QScrollArea>
+#include <QPushButton>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
@@ -50,9 +51,9 @@ DeskControler::DeskControler(QWidget* parent)
     // 应用重新激活
     connect(qApp, &QGuiApplication::applicationStateChanged, this, &DeskControler::onApplicationStateChanged);
 
-    // ============ 启用Kiosk模式 ============
-    // 注意: 如需禁用Kiosk模式,请注释掉下面这行
-    // 延迟启用，等待Activity完全初始化
+// ============ 启用Kiosk模式 ============
+// 注意: 如需禁用Kiosk模式,请注释掉下面这行
+// 延迟启用，等待Activity完全初始化
 #ifdef Q_OS_ANDROID
     QTimer::singleShot(1000, this, [this]() {
         enableKioskMode();
@@ -212,7 +213,7 @@ bool DeskControler::connectToWiFi(const QString &ssid, const QString &password)
     //     "android.permission.CHANGE_WIFI_STATE",
     //     "android.permission.ACCESS_FINE_LOCATION"}
     //    );
-	//
+    //
     //if (result["android.permission.ACCESS_WIFI_STATE"] == QtAndroid::PermissionResult::Denied)
     //{
     //    LogWidget::instance()->addLog(QString("QtAndroid ACCESS_WIFI_STATE Permission Denied!"), LogWidget::Error);
@@ -442,7 +443,51 @@ void DeskControler::setupVideoSession(const QString& relayServer, quint16 relayP
 
     scrollArea->resize(VIEW_SIZE);
     scrollArea->raise();
-    scrollArea->show();
+    //scrollArea->show();
+
+    // ================= START 新增代码: 断开连接按钮 =================
+    // 创建一个悬浮在ScrollArea之上的按钮
+    QPushButton* disconnectBtn = new QPushButton("断开连接", scrollArea);
+
+    // 设置样式：红色半透明背景，白色文字，圆角，确保在白色背景或视频上都可见
+    disconnectBtn->setStyleSheet(
+        "QPushButton {"
+        "    background-color: rgba(231, 76, 60, 220);" /* 红色背景 */
+        "    color: white;"
+        "    border: none;"
+        "    border-radius: 8px;"
+        "    font-size: 16px;"
+        "    padding: 10px 20px;"
+        "    font-weight: bold;"
+        "}"
+        "QPushButton:pressed {"
+        "    background-color: rgba(192, 57, 43, 255);"
+        "}"
+        );
+    disconnectBtn->adjustSize();
+
+    // 计算位置：放置在左下角
+    // 获取屏幕尺寸以确保位置在可视区域内
+    int targetHeight = scrollArea->height();
+    if (QScreen* screen = QGuiApplication::primaryScreen()) {
+        targetHeight = screen->size().height();
+    }
+
+    int margin = 30;
+    int btnX = margin;
+    // Y轴位置：屏幕高度 - 按钮高度 - 边距
+    int btnY = targetHeight - disconnectBtn->height() - margin;
+
+    disconnectBtn->move(btnX, btnY);
+    disconnectBtn->setCursor(Qt::PointingHandCursor);
+    disconnectBtn->show();
+    disconnectBtn->raise(); // 关键：确保按钮在VideoWidget之上
+
+    // 连接点击信号到关闭处理槽函数
+    // 这里连接到 handleCloseBtnClicked 或 destroyVideoWidget 均可
+    connect(disconnectBtn, &QPushButton::clicked, this, &DeskControler::handleCloseBtnClicked);
+    // ================= END 新增代码 =================
+
 
     m_videoReceiver = new VideoReceiver(this);
     connect(m_videoReceiver, &VideoReceiver::networkError, this, &DeskControler::onVideoReceiverError);
@@ -514,6 +559,9 @@ void DeskControler::setupVideoSession(const QString& relayServer, quint16 relayP
 
             videoWidget->setPreValue(scale);
             scrollArea->resize(screenSize+border);
+            scrollArea->show();
+            scrollArea->raise(); // 确保窗口在最顶层
+
             //videoWidget->move(offsetX, offsetY);
             firstFrame = false;
 
@@ -602,12 +650,12 @@ void DeskControler::onApplicationStateChanged(Qt::ApplicationState state)
     {
 #ifdef Q_OS_ANDROID
         m_scrollArea->setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint);
-#endif
-        // m_scrollArea->show();
+#endif \
+    // m_scrollArea->show();
         m_scrollArea->raise();
     }
 
-    // Kiosk模式: 应用激活时重新隐藏系统UI
+// Kiosk模式: 应用激活时重新隐藏系统UI
 #ifdef Q_OS_ANDROID
     if (state == Qt::ApplicationActive && m_kioskModeEnabled)
     {
@@ -616,7 +664,7 @@ void DeskControler::onApplicationStateChanged(Qt::ApplicationState state)
             "hideSystemUI",
             "(Landroid/app/Activity;)V",
             QtAndroid::androidActivity().object()
-        );
+            );
     }
 #endif
 }
@@ -658,7 +706,7 @@ void DeskControler::enableKioskMode()
         "enableKioskMode",
         "(Landroid/app/Activity;)V",
         activity.object()
-    );
+        );
 
     // 检查JNI异常
     QAndroidJniEnvironment env;
@@ -688,7 +736,7 @@ void DeskControler::disableKioskMode()
         "disableKioskMode",
         "(Landroid/app/Activity;)V",
         QtAndroid::androidActivity().object()
-    );
+        );
 #endif
 }
 
@@ -744,7 +792,7 @@ void DeskControler::mousePressEvent(QMouseEvent *event)
                         "exitApp",
                         "(Landroid/app/Activity;)V",
                         QtAndroid::androidActivity().object()
-                    );
+                        );
 
                     // 也在Qt层面退出
                     qApp->quit();
