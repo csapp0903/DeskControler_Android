@@ -9,9 +9,9 @@
 #define BTN_FIXED_W 80
 
 VideoWidget::VideoWidget(QWidget* parent)
-    : QOpenGLWidget(parent)
+    : QWidget(parent)
 {
-    setWindowFlags(Qt::Window);
+    //setWindowFlags(Qt::Window);
     setFocusPolicy(Qt::StrongFocus);
     // 启用鼠标跟踪以接收鼠标移动事件
     setMouseTracking(true);
@@ -21,6 +21,8 @@ VideoWidget::VideoWidget(QWidget* parent)
     setAttribute(Qt::WA_TouchPadAcceptSingleTouchEvents, false);
     // 启用悬停事件
     setAttribute(Qt::WA_Hover);
+
+    setAttribute(Qt::WA_OpaquePaintEvent, false);
 
     m_closeBtn = new QPushButton("X", this);
     m_closeBtn->setFixedSize(BTN_FIXED_W, BTN_FIXED_W);
@@ -33,13 +35,13 @@ void VideoWidget::setFrame(const QImage& image)
 {
     m_currentFrame = image;
 
-    // 首帧时设置固定尺寸（用于滚动区域）
-    if (m_firstFrame && !m_currentFrame.isNull())
-    {
-        setMinimumSize(m_currentFrame.size());
-        resize(m_currentFrame.size());
-        m_firstFrame = false;
-    }
+    // // 首帧时设置固定尺寸（用于滚动区域）
+    // if (m_firstFrame && !m_currentFrame.isNull())
+    // {
+    //     setMinimumSize(m_currentFrame.size());
+    //     resize(m_currentFrame.size());
+    //     m_firstFrame = false;
+    // }
 
     update();
 }
@@ -145,7 +147,7 @@ bool VideoWidget::event(QEvent *event)
         break;
     }
 
-    return QOpenGLWidget::event(event);
+    return QWidget::event(event);
 }
 
 void VideoWidget::mouseDoubleClickEvent(QMouseEvent* event)
