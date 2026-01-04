@@ -33,8 +33,10 @@ VideoDecoderWorker::VideoDecoderWorker(QObject* parent)
         LogWidget::instance()->addLog(QString("Could not allocate video frame"), LogWidget::Error);
     }
 
-    m_timer.setInterval(50);
-    connect(&m_timer, &QTimer::timeout, this, [&](){
+    m_timer = new QTimer(this);
+    m_timer->setInterval(50);
+    //m_timer.setInterval(50);
+    connect(m_timer, &QTimer::timeout, this, [&](){
 
         QMutexLocker locker(&m_mutex);
 
@@ -61,7 +63,7 @@ VideoDecoderWorker::VideoDecoderWorker(QObject* parent)
         }
     });
 
-    m_timer.start();
+    m_timer->start();
 }
 
 VideoDecoderWorker::~VideoDecoderWorker()
@@ -71,6 +73,12 @@ VideoDecoderWorker::~VideoDecoderWorker()
 
 void VideoDecoderWorker::cleanup()
 {
+    if (m_timer) {
+        m_timer->stop();
+        // 不需要在 cleanup 中 delete m_timer，因为它是子对象，会随析构自动释放
+        // 但如果想要显式停止，stop() 是必须的
+    }
+
     if (swsCtx)
     {
         sws_freeContext(swsCtx);
