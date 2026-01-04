@@ -1421,7 +1421,7 @@ void DeskControler::onApplicationStateChanged(Qt::ApplicationState state)
 #ifdef Q_OS_ANDROID
         m_scrollArea->setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint);
 #endif \
-    // m_scrollArea->show();
+        // m_scrollArea->show();
         m_scrollArea->raise();
     }
 
