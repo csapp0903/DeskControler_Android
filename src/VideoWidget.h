@@ -1,13 +1,13 @@
 #ifndef VIDEOWIDGET_H
 #define VIDEOWIDGET_H
 
-#include <QOpenGLWidget>
+#include <QWidget>
 #include <QImage>
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <QPushButton>
 
-class VideoWidget : public QOpenGLWidget
+class VideoWidget : public QWidget
 {
     Q_OBJECT
 
