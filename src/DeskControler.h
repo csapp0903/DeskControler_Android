@@ -93,6 +93,11 @@ private:
     QLabel *m_cameraLabel = nullptr;
     QZXing m_decoder;
 
+    // ============ 连接信息成员变量 (替代UI输入框) ============
+    QString m_serverIp;
+    quint16 m_serverPort = 0;
+    QString m_uuid;
+
     // ============ Kiosk模式相关成员变量 ============
     bool m_kioskModeEnabled = false;        // Kiosk模式是否启用
     int m_debugExitTapCount = 0;            // 调试退出点击计数

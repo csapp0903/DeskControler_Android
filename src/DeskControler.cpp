@@ -61,7 +61,9 @@ DeskControler::DeskControler(QWidget* parent)
     loadConfig();
 
     // 当点击按钮时，发起 TCP 连接并发送 PunchHoleRequest
-    connect(ui.pushButton, &QPushButton::clicked, this, &DeskControler::onConnectClicked);
+    //connect(ui.pushButton, &QPushButton::clicked, this, &DeskControler::onConnectClicked);
+    // 当点击按钮时，启动相机扫码
+    connect(ui.pushButton, &QPushButton::clicked, this, &DeskControler::startCamera);
 
     initCamera();
 
@@ -162,44 +164,44 @@ void DeskControler::initCustomUI()
     tbLayout->addWidget(lbTitleEn2);
     tbLayout->addWidget(lbTitleCn2);
 
-    // 2. 输入框块
-    QWidget *inputBlock = new QWidget(centerGroup);
-    QVBoxLayout *inputLayout = new QVBoxLayout(inputBlock);
-    inputLayout->setSpacing(10);
+    // // 输入框块
+    // QWidget *inputBlock = new QWidget(centerGroup);
+    // QVBoxLayout *inputLayout = new QVBoxLayout(inputBlock);
+    // inputLayout->setSpacing(10);
 
-    // 设置占位符和默认值
-    ui.ipLineEdit_->setPlaceholderText("服务器 IP 地址");
-    ui.portLineEdit_->setPlaceholderText("端口号");
-    ui.lineEdit->setPlaceholderText("设备 UUID");
+    // // 设置占位符和默认值
+    // ui.ipLineEdit_->setPlaceholderText("服务器 IP 地址");
+    // ui.portLineEdit_->setPlaceholderText("端口号");
+    // ui.lineEdit->setPlaceholderText("设备 UUID");
 
-    ui.ipLineEdit_->setText("127.0.0.1");
-    ui.portLineEdit_->setText("21116");
+    // ui.ipLineEdit_->setText("127.0.0.1");
+    // ui.portLineEdit_->setText("21116");
 
-    // 设置宽度
-    int inputWidth = 320;
-    ui.ipLineEdit_->setFixedWidth(inputWidth);
-    ui.portLineEdit_->setFixedWidth(inputWidth);
-    ui.lineEdit->setFixedWidth(inputWidth);
+    // // 设置宽度
+    // int inputWidth = 320;
+    // ui.ipLineEdit_->setFixedWidth(inputWidth);
+    // ui.portLineEdit_->setFixedWidth(inputWidth);
+    // ui.lineEdit->setFixedWidth(inputWidth);
 
-    ui.ipLineEdit_->setParent(inputBlock);
-    ui.portLineEdit_->setParent(inputBlock);
-    ui.lineEdit->setParent(inputBlock);
+    // ui.ipLineEdit_->setParent(inputBlock);
+    // ui.portLineEdit_->setParent(inputBlock);
+    // ui.lineEdit->setParent(inputBlock);
 
-    inputLayout->addWidget(ui.ipLineEdit_);
-    inputLayout->addWidget(ui.portLineEdit_);
-    inputLayout->addWidget(ui.lineEdit);
-    inputLayout->setAlignment(Qt::AlignCenter);
+    // inputLayout->addWidget(ui.ipLineEdit_);
+    // inputLayout->addWidget(ui.portLineEdit_);
+    // inputLayout->addWidget(ui.lineEdit);
+    // inputLayout->setAlignment(Qt::AlignCenter);
 
-    // ==========================================
-    // 扫码按钮块 (放在输入框下面)
-    // ==========================================
-    // 复用 ui.pushButton_camera (StartCamera)
-    ui.pushButton_camera->setText("扫码配置");
-    ui.pushButton_camera->setObjectName("BtnScan"); // 设置特殊样式 ID
-    ui.pushButton_camera->setFixedSize(inputWidth, 45); // 宽度与输入框一致
-    ui.pushButton_camera->setCursor(Qt::PointingHandCursor);
-    ui.pushButton_camera->setVisible(true); // 确保显示
-    ui.pushButton_camera->setParent(centerGroup); // 挂载到布局
+    // // ==========================================
+    // // 扫码按钮块 (放在输入框下面)
+    // // ==========================================
+    // // 复用 ui.pushButton_camera (StartCamera)
+    // ui.pushButton_camera->setText("扫码配置");
+    // ui.pushButton_camera->setObjectName("BtnScan"); // 设置特殊样式 ID
+    // ui.pushButton_camera->setFixedSize(inputWidth, 45); // 宽度与输入框一致
+    // ui.pushButton_camera->setCursor(Qt::PointingHandCursor);
+    // ui.pushButton_camera->setVisible(true); // 确保显示
+    // ui.pushButton_camera->setParent(centerGroup); // 挂载到布局
 
     // 底部按钮块 (连接/关机)
     QWidget *btnGroup = new QWidget(centerGroup);
@@ -222,8 +224,8 @@ void DeskControler::initCustomUI()
 
     // 组装顺序：标题 -> 输入框 -> [扫码按钮] -> 连接/关机
     centerLayout->addWidget(titleBlock);
-    centerLayout->addWidget(inputBlock);
-    centerLayout->addWidget(ui.pushButton_camera, 0, Qt::AlignCenter); // 居中添加扫码按钮
+    // centerLayout->addWidget(inputBlock);
+    // centerLayout->addWidget(ui.pushButton_camera, 0, Qt::AlignCenter); // 居中添加扫码按钮
     centerLayout->addWidget(btnGroup);
 
     // 隐藏多余的调试按钮
@@ -428,20 +430,24 @@ void DeskControler::loadConfig()
     int port = serverObj["port"].toInt(21116);
     QString uuid = config["uuid"].toString("");
 
-    // 设置 UI 控件
-    ui.ipLineEdit_->setText(ip);
-    ui.portLineEdit_->setText(QString::number(port));
-    ui.lineEdit->setText(uuid);
+    // // 设置 UI 控件
+    // ui.ipLineEdit_->setText(ip);
+    // ui.portLineEdit_->setText(QString::number(port));
+    // ui.lineEdit->setText(uuid);
 }
 
 void DeskControler::saveConfig()
 {
     QJsonObject config;
     QJsonObject serverObj;
-    serverObj["ip"] = ui.ipLineEdit_->text().trimmed();
-    serverObj["port"] = ui.portLineEdit_->text().toInt();
+    // serverObj["ip"] = ui.ipLineEdit_->text().trimmed();
+    // serverObj["port"] = ui.portLineEdit_->text().toInt();
+    // config["server"] = serverObj;
+    // config["uuid"] = ui.lineEdit->text().trimmed();
+    serverObj["ip"] = m_serverIp; // ui.ipLineEdit_->text().trimmed();
+    serverObj["port"] = m_serverPort; // ui.portLineEdit_->text().toInt();
     config["server"] = serverObj;
-    config["uuid"] = ui.lineEdit->text().trimmed();
+    config["uuid"] = m_uuid; // ui.lineEdit->text().trimmed();
 
     QJsonDocument doc(config);
     QFile file(m_dir + "/DeskControler.json");
@@ -662,9 +668,12 @@ void DeskControler::handleCameraImage(const QImage &image)
         if (result.contains("WIFI") && result.contains("P")
             && result.contains("UUID") && result.contains("IP"))
         {
-            ui.ipLineEdit_->setText(result["IP"]);
-            ui.lineEdit->setText(result["UUID"]);
-            ui.portLineEdit_->setText(result["PORT"]);
+            // ui.ipLineEdit_->setText(result["IP"]);
+            // ui.lineEdit->setText(result["UUID"]);
+            // ui.portLineEdit_->setText(result["PORT"]);
+            m_serverIp = result["IP"];
+            m_uuid = result["UUID"];
+            m_serverPort = result["PORT"].toUShort();
 
             QString ssid = result["WIFI"];
             QString password = result["P"];
@@ -705,9 +714,12 @@ void DeskControler::on_pushButton_camera_clicked()
 
 void DeskControler::onConnectClicked()
 {
-    QString ip = ui.ipLineEdit_->text();
-    quint16 port = ui.portLineEdit_->text().toUShort();
-    QString uuid = ui.lineEdit->text();
+    // QString ip = ui.ipLineEdit_->text();
+    // quint16 port = ui.portLineEdit_->text().toUShort();
+    // QString uuid = ui.lineEdit->text();
+    QString ip = m_serverIp; // ui.ipLineEdit_->text();
+    quint16 port = m_serverPort; // ui.portLineEdit_->text().toUShort();
+    QString uuid = m_uuid; // ui.lineEdit->text();
 
     if (ip.isEmpty() || uuid.isEmpty() || port == 0)
     {
@@ -740,9 +752,9 @@ void DeskControler::onConnectClicked()
         return;
     }
 
-    ui.ipLineEdit_->setEnabled(false);
-    ui.portLineEdit_->setEnabled(false);
-    ui.lineEdit->setEnabled(false);
+    // ui.ipLineEdit_->setEnabled(false);
+    // ui.portLineEdit_->setEnabled(false);
+    // ui.lineEdit->setEnabled(false);
     ui.pushButton->setEnabled(false);
 
     LogWidget::instance()->addLog("Server connection established. Sending punch hole request.", LogWidget::Info);
@@ -781,9 +793,9 @@ void DeskControler::onPunchHoleResponse(const QString& relayServer, int relayPor
 
     if (result != 0)
     {
-        ui.ipLineEdit_->setEnabled(true);
-        ui.portLineEdit_->setEnabled(true);
-        ui.lineEdit->setEnabled(true);
+        // ui.ipLineEdit_->setEnabled(true);
+        // ui.portLineEdit_->setEnabled(true);
+        // ui.lineEdit->setEnabled(true);
         ui.pushButton->setEnabled(true);
         return;
     }
