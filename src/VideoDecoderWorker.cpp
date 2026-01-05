@@ -75,8 +75,6 @@ void VideoDecoderWorker::cleanup()
 {
     if (m_timer) {
         m_timer->stop();
-        // 不需要在 cleanup 中 delete m_timer，因为它是子对象，会随析构自动释放
-        // 但如果想要显式停止，stop() 是必须的
     }
 
     if (swsCtx)
