@@ -11,6 +11,7 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QTimer>
+#include <QPainter>
 
 #include <QtAndroidExtras/QtAndroid>
 #include <QtAndroidExtras/QAndroidJniObject>
@@ -21,11 +22,27 @@
 
 #define VIEW_SIZE QSize(1920, 1080)
 
+// ==========================================
+// [配置区]
+// ==========================================
+const QString COLOR_BG_MAIN     = "#FFFFFF";  // 背景：纯净白
+const QString COLOR_THEME_BLUE  = "#4472C4";  // 主色调：医疗蓝
+const QString COLOR_TEXT_TITLE  = "#203764";  // 标题色：深蓝 (基于主色调加深)
+const QString COLOR_TEXT_BTN    = "#FFFFFF";  // 按钮文字：纯白
+const QString COLOR_BORDER      = "#4472C4";  // 窗口边框：医疗蓝
+
+// 字体大小配置
+const QString FONT_TITLE_EN     = "24px";     // 英文标题大小
+const QString FONT_TITLE_CN     = "48px";     // 中文标题大小 (加粗)
+const QString FONT_BTN          = "20px";     // 按钮文字大小
+
 DeskControler::DeskControler(QWidget* parent)
     : QWidget(parent),
     m_networkManager(nullptr),
     m_videoReceiver(nullptr),
-    m_scrollArea(nullptr)
+    m_scrollArea(nullptr),
+    m_menuAnim(nullptr),
+    m_slidingMenu(nullptr)
 {
     ui.setupUi(this);
     // 将 LogWidget 放到界面上
@@ -48,6 +65,10 @@ DeskControler::DeskControler(QWidget* parent)
 
     initCamera();
 
+    initCustomUI();
+    applyCustomStyles();
+
+    connect(ui.pushButton, &QPushButton::clicked, this, &DeskControler::onConnectClicked);
     // 应用重新激活
     connect(qApp, &QGuiApplication::applicationStateChanged, this, &DeskControler::onApplicationStateChanged);
 
@@ -64,6 +85,305 @@ DeskControler::DeskControler(QWidget* parent)
 DeskControler::~DeskControler()
 {
 
+}
+
+void DeskControler::initCustomUI()
+{
+    // 1. 清理旧布局
+    if (this->layout()) delete this->layout();
+
+    this->setObjectName("MainWindow");
+
+    // 2. 创建堆叠布局
+    m_mainStack = new QStackedLayout(this);
+    m_mainStack->setStackingMode(QStackedLayout::StackOne);
+
+    // ==========================================
+    // 状态一: 初始待机页 (Standby)
+    // ==========================================
+    m_pageStartup = new QWidget(this);
+    QVBoxLayout *layoutStartup = new QVBoxLayout(m_pageStartup);
+    layoutStartup->setContentsMargins(40, 40, 40, 40);
+
+    // Logo
+    QLabel *lbLogo1 = new QLabel(m_pageStartup);
+    lbLogo1->setObjectName("BrandLogo");
+    lbLogo1->setFixedSize(200, 60);
+
+    // 标题
+    QWidget *titleContainer1 = new QWidget(m_pageStartup);
+    QVBoxLayout *titleLayout1 = new QVBoxLayout(titleContainer1);
+
+    QLabel *lbTitleEn1 = new QLabel("Cardio Space™", titleContainer1);
+    lbTitleEn1->setAlignment(Qt::AlignCenter);
+    lbTitleEn1->setStyleSheet("color: " + COLOR_TEXT_TITLE + "; font-size: " + FONT_TITLE_EN + ";");
+
+    QLabel *lbTitleCn1 = new QLabel("血管内超声诊断系统", titleContainer1);
+    lbTitleCn1->setAlignment(Qt::AlignCenter);
+    lbTitleCn1->setStyleSheet("color: " + COLOR_TEXT_TITLE + "; font-size: " + FONT_TITLE_CN + "; font-weight: bold;");
+
+    titleLayout1->addWidget(lbTitleEn1);
+    titleLayout1->addWidget(lbTitleCn1);
+
+    layoutStartup->addWidget(lbLogo1, 0, Qt::AlignLeft | Qt::AlignTop);
+    layoutStartup->addStretch();
+    layoutStartup->addWidget(titleContainer1, 0, Qt::AlignCenter);
+    layoutStartup->addStretch();
+
+    QTimer::singleShot(3000, this, &DeskControler::showMainPage);
+
+
+    // ==========================================
+    // 状态二: 连接控制页 (Connection)
+    // ==========================================
+    m_pageMain = new QWidget(this);
+    QVBoxLayout *layoutMain = new QVBoxLayout(m_pageMain);
+    layoutMain->setContentsMargins(40, 40, 40, 40);
+
+    // Logo
+    QLabel *lbLogo2 = new QLabel(m_pageMain);
+    lbLogo2->setObjectName("BrandLogo");
+    lbLogo2->setFixedSize(200, 60);
+
+    // 中间容器
+    QWidget *centerGroup = new QWidget(m_pageMain);
+    QVBoxLayout *centerLayout = new QVBoxLayout(centerGroup);
+    centerLayout->setSpacing(25); // 调整间距
+
+    // 1. 标题块
+    QWidget *titleBlock = new QWidget(centerGroup);
+    QVBoxLayout *tbLayout = new QVBoxLayout(titleBlock);
+    QLabel *lbTitleEn2 = new QLabel("Cardio Space™", titleBlock);
+    lbTitleEn2->setAlignment(Qt::AlignCenter);
+    lbTitleEn2->setStyleSheet("color: " + COLOR_TEXT_TITLE + "; font-size: " + FONT_TITLE_EN + ";");
+    QLabel *lbTitleCn2 = new QLabel("血管内超声诊断系统", titleBlock);
+    lbTitleCn2->setAlignment(Qt::AlignCenter);
+    lbTitleCn2->setStyleSheet("color: " + COLOR_TEXT_TITLE + "; font-size: " + FONT_TITLE_CN + "; font-weight: bold;");
+    tbLayout->addWidget(lbTitleEn2);
+    tbLayout->addWidget(lbTitleCn2);
+
+    // 2. 输入框块
+    QWidget *inputBlock = new QWidget(centerGroup);
+    QVBoxLayout *inputLayout = new QVBoxLayout(inputBlock);
+    inputLayout->setSpacing(10);
+
+    // 设置占位符和默认值
+    ui.ipLineEdit_->setPlaceholderText("服务器 IP 地址");
+    ui.portLineEdit_->setPlaceholderText("端口号");
+    ui.lineEdit->setPlaceholderText("设备 UUID");
+
+    ui.ipLineEdit_->setText("127.0.0.1");
+    ui.portLineEdit_->setText("21116");
+
+    // 设置宽度
+    int inputWidth = 320;
+    ui.ipLineEdit_->setFixedWidth(inputWidth);
+    ui.portLineEdit_->setFixedWidth(inputWidth);
+    ui.lineEdit->setFixedWidth(inputWidth);
+
+    ui.ipLineEdit_->setParent(inputBlock);
+    ui.portLineEdit_->setParent(inputBlock);
+    ui.lineEdit->setParent(inputBlock);
+
+    inputLayout->addWidget(ui.ipLineEdit_);
+    inputLayout->addWidget(ui.portLineEdit_);
+    inputLayout->addWidget(ui.lineEdit);
+    inputLayout->setAlignment(Qt::AlignCenter);
+
+    // ==========================================
+    // [新增] 扫码按钮块 (放在输入框下面)
+    // ==========================================
+    // 复用 ui.pushButton_camera (StartCamera)
+    ui.pushButton_camera->setText("扫码配置");
+    ui.pushButton_camera->setObjectName("BtnScan"); // 设置特殊样式 ID
+    ui.pushButton_camera->setFixedSize(inputWidth, 45); // 宽度与输入框一致
+    ui.pushButton_camera->setCursor(Qt::PointingHandCursor);
+    ui.pushButton_camera->setVisible(true); // 确保显示
+    ui.pushButton_camera->setParent(centerGroup); // 挂载到布局
+
+    // 3. 底部按钮块 (连接/关机)
+    QWidget *btnGroup = new QWidget(centerGroup);
+    QHBoxLayout *btnLayout = new QHBoxLayout(btnGroup);
+    btnLayout->setSpacing(40);
+
+    ui.pushButton->setText("连接");
+    ui.pushButton->setObjectName("BtnAction");
+    ui.pushButton->setFixedSize(160, 50);
+
+    QPushButton *btnShutdown = new QPushButton("关机", btnGroup);
+    btnShutdown->setObjectName("BtnAction");
+    btnShutdown->setFixedSize(160, 50);
+    connect(btnShutdown, &QPushButton::clicked, this, &DeskControler::onShutdownClicked);
+
+    btnLayout->addStretch();
+    btnLayout->addWidget(ui.pushButton);
+    btnLayout->addWidget(btnShutdown);
+    btnLayout->addStretch();
+
+    // 组装顺序：标题 -> 输入框 -> [扫码按钮] -> 连接/关机
+    centerLayout->addWidget(titleBlock);
+    centerLayout->addWidget(inputBlock);
+    centerLayout->addWidget(ui.pushButton_camera, 0, Qt::AlignCenter); // 居中添加扫码按钮
+    centerLayout->addWidget(btnGroup);
+
+    // 隐藏多余的调试按钮
+    ui.pushButton_2->setVisible(false);
+    ui.pushButton_2->setParent(m_pageMain);
+
+    layoutMain->addWidget(lbLogo2, 0, Qt::AlignLeft | Qt::AlignTop);
+    layoutMain->addStretch();
+    layoutMain->addWidget(centerGroup, 0, Qt::AlignCenter);
+    layoutMain->addStretch();
+
+    // ==========================================
+    // 状态三: 视频播放页 (Video Stream) - [含下拉动画]
+    // ==========================================
+    m_pageCamera = new QWidget(this);
+    QVBoxLayout *layoutCam = new QVBoxLayout(m_pageCamera);
+    layoutCam->setContentsMargins(0, 0, 0, 0);
+    layoutCam->setSpacing(0);
+
+    // 1. 顶部容器 (Mask 区域)
+    // 它的作用是定义“显示区域”，超出它的子控件部分会被裁剪(视觉上)
+    QWidget *topContainer = new QWidget(m_pageCamera);
+    topContainer->setObjectName("TopContainer");
+    topContainer->setFixedHeight(120);
+    topContainer->setStyleSheet("background-color: black;");
+    topContainer->installEventFilter(this);    // 点击这里触发下拉
+
+    // 2. 滑动菜单 (实际移动的部分)
+    // 注意：它是 topContainer 的子控件
+    m_slidingMenu = new QWidget(topContainer);
+    m_slidingMenu->setObjectName("SlidingMenu");
+    // 初始位置设为 (0, -120)，即完全隐藏在顶部上方
+    m_slidingMenu->setGeometry(0, -120, 1920, 120);
+    m_slidingMenu->setStyleSheet("background-color: transparent;"); // 透明背景
+
+    // 3. 菜单内容布局
+    QHBoxLayout *menuLayout = new QHBoxLayout(m_slidingMenu);
+    menuLayout->setAlignment(Qt::AlignCenter);
+    menuLayout->setContentsMargins(0, 0, 0, 0);
+
+    // 4. 断开连接按钮
+    QPushButton *btnExit = new QPushButton("断开连接", m_slidingMenu);
+    btnExit->setObjectName("BtnExit");
+    btnExit->setFixedSize(160, 50);
+    btnExit->setCursor(Qt::PointingHandCursor);
+
+    // 按钮样式
+    btnExit->setStyleSheet(
+        "QPushButton { background-color: #D32F2F; color: white; border-radius: 4px; font-weight: bold; font-size: 18px; }"
+        "QPushButton:pressed { background-color: #B71C1C; }"
+        );
+
+    connect(btnExit, &QPushButton::clicked, this, &DeskControler::handleCloseBtnClicked);
+    menuLayout->addWidget(btnExit);
+
+    // 5. 初始化动画对象
+    // 动画目标是 m_slidingMenu 的 "pos" (位置) 属性
+    m_menuAnim = new QPropertyAnimation(m_slidingMenu, "pos", this);
+    m_menuAnim->setDuration(300); // 动画时长 300ms
+    m_menuAnim->setEasingCurve(QEasingCurve::OutQuad); // 缓动效果：快出慢停
+
+    // 6. 底部视频容器
+    QWidget *videoContainer = new QWidget(m_pageCamera);
+    videoContainer->setObjectName("VideoContainer");
+    videoContainer->setStyleSheet("background-color: black;");
+    QVBoxLayout *videoLayout = new QVBoxLayout(videoContainer);
+    videoLayout->setContentsMargins(0, 0, 0, 0);
+
+    layoutCam->addWidget(topContainer);
+    layoutCam->addWidget(videoContainer);
+
+    m_mainStack->addWidget(m_pageStartup);
+    m_mainStack->addWidget(m_pageMain);
+    m_mainStack->addWidget(m_pageCamera);
+    m_mainStack->setCurrentIndex(0);
+}
+
+void DeskControler::applyCustomStyles()
+{
+    QString qss = QString(
+                      "QWidget#MainWindow { background-color: %1; border: 2px solid %4; }"
+                      "QWidget { background-color: %1; font-family: 'Microsoft YaHei', sans-serif; }"
+
+                      // 输入框
+                      "QLineEdit { "
+                      "   background-color: #F5F5F5; border: 1px solid #CCCCCC; "
+                      "   border-radius: 4px; padding: 8px; font-size: 16px; color: #333333; "
+                      "}"
+                      "QLineEdit:focus { border: 1px solid %4; background-color: #FFFFFF; }"
+
+                      // 核心动作按钮 (连接/关机/断开)
+                      "QPushButton#BtnAction { "
+                      "   background-color: %2; color: %3; border: none; border-radius: 2px; "
+                      "   font-size: %5; font-weight: bold;"
+                      "}"
+                      "QPushButton#BtnAction:pressed { background-color: #35589A; }"
+                      "QPushButton#BtnAction:disabled { background-color: #999999; }"
+
+                      // [新增] 扫码配置按钮样式 (浅色/幽灵按钮风格)
+                      "QPushButton#BtnScan { "
+                      "   background-color: transparent; "
+                      "   color: %4; "              // 字体用医疗蓝
+                      "   border: 1px solid %4; "   // 边框用医疗蓝
+                      "   border-radius: 4px; "
+                      "   font-size: 16px; "
+                      "}"
+                      "QPushButton#BtnScan:pressed { "
+                      "   background-color: #EBF2FA; " // 按下变浅蓝背景
+                      "}"
+
+                      "QLabel#BrandLogo { border: 1px dashed #CCCCCC; background-color: transparent; }"
+                      )
+                      .arg(COLOR_BG_MAIN)     // %1
+                      .arg(COLOR_THEME_BLUE)  // %2
+                      .arg(COLOR_TEXT_BTN)    // %3
+                      .arg(COLOR_BORDER)      // %4
+                      .arg(FONT_BTN);         // %5
+
+    this->setStyleSheet(qss);
+}
+
+void DeskControler::showMainPage()
+{
+    m_mainStack->setCurrentIndex(1);
+}
+
+void DeskControler::onShutdownClicked()
+{
+    // 关机功能暂未实现
+    QMessageBox::information(this, "Shutdown", "Shutdown function pending...");
+}
+
+void DeskControler::toggleTopMenu()
+{
+    if (!m_slidingMenu || !m_menuAnim) return;
+
+    // 如果动画正在播放，忽略操作，防止鬼畜
+    if (m_menuAnim->state() == QAbstractAnimation::Running) return;
+
+    // 获取当前容器的宽度（适配屏幕宽度）
+    int currentW = m_slidingMenu->parentWidget()->width();
+
+    if (m_isMenuOpen) {
+        // [当前是打开的] -> 执行收起动画
+        // 从 (0, 0) 移动到 (0, -120)
+        m_menuAnim->setStartValue(QPoint(0, 0));
+        m_menuAnim->setEndValue(QPoint(0, -120));
+        m_isMenuOpen = false;
+    } else {
+        // [当前是关闭的] -> 执行下拉动画
+        // 从 (0, -120) 移动到 (0, 0)
+        m_menuAnim->setStartValue(QPoint(0, -120));
+        m_menuAnim->setEndValue(QPoint(0, 0));
+
+        // 确保宽度适配，防止旋转屏幕后宽度不对
+        m_slidingMenu->setFixedWidth(currentW);
+        m_isMenuOpen = true;
+    }
+
+    m_menuAnim->start();
 }
 
 void DeskControler::loadConfig()
@@ -167,7 +487,13 @@ void DeskControler::initCamera()
     m_cameraLabel->setGeometry(rect);
     m_cameraLabel->setAlignment(Qt::AlignCenter);
 
-    QPushButton *closeBtn = new QPushButton("X", m_cameraLabel);
+    //QPushButton *closeBtn = new QPushButton("X", m_cameraLabel);
+    QPushButton *closeBtn = new QPushButton("关闭相机", m_cameraLabel);
+    closeBtn->setStyleSheet(
+        "background-color: #D32F2F; color: white; border-radius: 4px; "
+        "font-size: 16px; padding: 8px; font-weight: bold;"
+        );
+    closeBtn->resize(120, 50); // 调整大小
     closeBtn->move(rect.width() - 160, 40);
     connect(closeBtn, &QPushButton::clicked, this, [this](){
         m_cameraLabel->close();
@@ -255,7 +581,67 @@ bool DeskControler::connectToWiFi(const QString &ssid, const QString &password)
 void DeskControler::handleCameraImage(const QImage &image)
 {
     QPixmap pixmap = QPixmap::fromImage(image);
+
+    // ==========================================
+    // [修改] 绘制二维码辅助框 (仅线框，无遮罩)
+    // ==========================================
+    QPainter p(&pixmap);
+    p.setRenderHint(QPainter::Antialiasing);
+
+    int w = pixmap.width();
+    int h = pixmap.height();
+
+    // 定义扫描框大小 (取短边的 60% 为边长，保持正方形)
+    int boxSize = qMin(w, h) * 0.6;
+    int x = (w - boxSize) / 2;
+    int y = (h - boxSize) / 2;
+
+    // --- [已删除] 半透明背景遮罩绘制代码 ---
+
+    // --- B. 绘制扫描框四角 (医疗蓝/青色) ---
+    // 线条颜色：你可以改为 #4472C4 (医疗蓝) 或 #00BFA5 (青色)
+    QColor cornerColor("#00BFA5");
+    QPen pen(cornerColor);
+    pen.setWidth(6); // 线条宽度
+    p.setPen(pen);
+    p.setBrush(Qt::NoBrush);
+
+    int cornerLen = 40; // 拐角长度
+    // 左上角
+    p.drawLine(x, y, x + cornerLen, y);
+    p.drawLine(x, y, x, y + cornerLen);
+    // 右上角
+    p.drawLine(x + boxSize, y, x + boxSize - cornerLen, y);
+    p.drawLine(x + boxSize, y, x + boxSize, y + cornerLen);
+    // 左下角
+    p.drawLine(x, y + boxSize, x + cornerLen, y + boxSize);
+    p.drawLine(x, y + boxSize, x, y + boxSize - cornerLen);
+    // 右下角
+    p.drawLine(x + boxSize, y + boxSize, x + boxSize - cornerLen, y + boxSize);
+    p.drawLine(x + boxSize, y + boxSize, x + boxSize, y + boxSize - cornerLen);
+
+    // --- C. 绘制提示文字 ---
+    // 增加一点阴影，防止背景太亮看不清文字
+    p.setPen(Qt::black); // 阴影色
+    QFont font = p.font();
+    font.setPixelSize(36);
+    font.setBold(true);
+    p.setFont(font);
+
+    QRect textRect(0, y + boxSize + 30, w, 50);
+    // 先画阴影 (偏移 2px)
+    p.drawText(textRect.translated(2, 2), Qt::AlignCenter, "将二维码放入框内自动扫描");
+
+    // 再画正文 (白色)
+    p.setPen(Qt::white);
+    p.drawText(textRect, Qt::AlignCenter, "将二维码放入框内自动扫描");
+
+    p.end();
+
+    // 2. 显示处理后的图像
     m_cameraLabel->setPixmap(pixmap);
+
+    //m_cameraLabel->setPixmap(pixmap);
 
     QString info = QString::fromLocal8Bit(m_decoder.decodeImage(image).toLatin1());
     LogWidget::instance()->addLog(QString("Camera Info:%1").arg(info), LogWidget::Info);
@@ -408,216 +794,600 @@ void DeskControler::onPunchHoleResponse(const QString& relayServer, int relayPor
     setupVideoSession(relayServer, relayPort, resultStr);
 }
 
+// void DeskControler::setupVideoSession(const QString& relayServer, quint16 relayPort, const QString& status)
+// {
+//     LogWidget::instance()->addLog(
+//         QString("Establishing video session via relay server %1:%2 - Status: %3").arg(relayServer).arg(relayPort).arg(status),
+//         LogWidget::Info);
+
+//     VideoWidget* videoWidget = new VideoWidget();
+//     videoWidget->setAttribute(Qt::WA_DeleteOnClose, true);
+
+//     QScrollArea* scrollArea = new QScrollArea(this);
+//     // scrollArea->setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+//     m_scrollArea = scrollArea;
+// #ifdef Q_OS_ANDROID
+//     scrollArea->setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint);
+// #else
+//     scrollArea->setWindowFlags(Qt::Window);
+// #endif
+//     scrollArea->setWidget(videoWidget);
+//     // scrollArea->setAlignment(Qt::AlignCenter);
+//     scrollArea->setAttribute(Qt::WA_DeleteOnClose, true);
+//     scrollArea->viewport()->setStyleSheet("background-color: white;"); //black
+//     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+//     scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+//     scrollArea->horizontalScrollBar()->setEnabled(false);
+//     scrollArea->verticalScrollBar()->setEnabled(false);
+//     scrollArea->horizontalScrollBar()->hide();
+//     scrollArea->verticalScrollBar()->hide();
+
+//     connect(scrollArea, &QObject::destroyed, this, [this]() {
+//         destroyVideoSession();
+//         LogWidget::instance()->addLog("Video widget closed by user.", LogWidget::Info);
+//     });
+
+//     scrollArea->resize(VIEW_SIZE);
+//     scrollArea->raise();
+//     //scrollArea->show();
+
+//     // ================= START 新增代码: 断开连接按钮 =================
+//     // 创建一个悬浮在ScrollArea之上的按钮
+//     QPushButton* disconnectBtn = new QPushButton("断开连接", scrollArea);
+
+//     // 设置样式：红色半透明背景，白色文字，圆角，确保在白色背景或视频上都可见
+//     disconnectBtn->setStyleSheet(
+//         "QPushButton {"
+//         "    background-color: rgba(231, 76, 60, 220);" /* 红色背景 */
+//         "    color: white;"
+//         "    border: none;"
+//         "    border-radius: 8px;"
+//         "    font-size: 16px;"
+//         "    padding: 10px 20px;"
+//         "    font-weight: bold;"
+//         "}"
+//         "QPushButton:pressed {"
+//         "    background-color: rgba(192, 57, 43, 255);"
+//         "}"
+//         );
+//     disconnectBtn->adjustSize();
+
+//     // 计算位置：放置在左下角
+//     // 获取屏幕尺寸以确保位置在可视区域内
+//     int targetHeight = scrollArea->height();
+//     if (QScreen* screen = QGuiApplication::primaryScreen()) {
+//         targetHeight = screen->size().height();
+//     }
+
+//     int margin = 30;
+//     int btnX = margin;
+//     // Y轴位置：屏幕高度 - 按钮高度 - 边距
+//     int btnY = targetHeight - disconnectBtn->height() - margin;
+
+//     disconnectBtn->move(btnX, btnY);
+//     disconnectBtn->setCursor(Qt::PointingHandCursor);
+//     disconnectBtn->show();
+//     disconnectBtn->raise(); // 关键：确保按钮在VideoWidget之上
+
+//     // 连接点击信号到关闭处理槽函数
+//     // 这里连接到 handleCloseBtnClicked 或 destroyVideoWidget 均可
+//     connect(disconnectBtn, &QPushButton::clicked, this, &DeskControler::handleCloseBtnClicked);
+//     // ================= END 新增代码 =================
+
+
+//     m_videoReceiver = new VideoReceiver(this);
+//     connect(m_videoReceiver, &VideoReceiver::networkError, this, &DeskControler::onVideoReceiverError);
+
+//     // m_remoteClipboard = new RemoteClipboard(this);
+//     // m_remoteClipboard->setRemoteWindow(scrollArea);
+
+//     // if (m_remoteClipboard->start())
+//     // {
+//     //     LogWidget::instance()->addLog("Global keyboard hook installed", LogWidget::Info);
+//     // }
+//     // else
+//     // {
+//     //     LogWidget::instance()->addLog("Failed to install global keyboard hook", LogWidget::Error);
+//     // }
+
+//     // connect(m_remoteClipboard, &RemoteClipboard::ctrlCPressed,
+//     //         m_videoReceiver, &VideoReceiver::clipboardDataCaptured);
+
+//     connect(videoWidget, &VideoWidget::mouseEventCaptured,
+//             m_videoReceiver, &VideoReceiver::mouseEventCaptured);
+
+//     connect(videoWidget, &VideoWidget::touchEventCaptured,
+//             m_videoReceiver, &VideoReceiver::touchEventCaptured);
+
+//     QObject::connect(videoWidget, &VideoWidget::keyEventCaptured,
+//                      m_videoReceiver, &VideoReceiver::keyEventCaptured);
+
+//     connect(videoWidget, &VideoWidget::closeBtnClicked, this, &DeskControler::handleCloseBtnClicked);
+
+//     // QObject::connect(m_videoReceiver, &VideoReceiver::onClipboardMessageReceived,
+//     //                  m_remoteClipboard, &RemoteClipboard::onClipboardMessageReceived);
+
+//     static bool firstFrame = true;
+//     firstFrame = true;
+//     connect(m_videoReceiver, &VideoReceiver::frameReady, this, [videoWidget, scrollArea](const QImage& img) {
+//         static QSize imgSize = img.size();
+//         static QSize newSize = imgSize;
+
+//         if (firstFrame && !img.isNull())
+//         {
+//             LogWidget::instance()->addLog("Video stream started and UI initialized.", LogWidget::Info);
+
+//             QScreen* screen = QGuiApplication::primaryScreen();
+//             QSize screenSize = VIEW_SIZE;
+
+//             qreal scale = 1.0;
+//             qreal offsetX = 0, offsetY = 0;
+
+//             QSize border = QSize(4,4);
+//             if (screen)
+//             {
+//                 screenSize = screen->size();
+
+//                 /* wTest */
+//                 //QSize initialSize(1920, 1200);
+//                 //screenSize = initialSize;
+
+//                 scale = qMin(screenSize.width() * 1.0 / imgSize.width(), screenSize.height() * 1.0 / imgSize.height());
+//                 newSize = imgSize * scale;
+//                 offsetX = (imgSize.width() - newSize.width()) / 2;
+//                 offsetY = (imgSize.height() - newSize.height()) / 2;
+
+//                 QString str = QString("UI initialized scale:%1 offsetX:%2 offsetY:%3 newSize w:%4 h:%5")
+//                                   .arg(scale).arg(offsetX).arg(offsetY).arg(newSize.width()).arg(newSize.height());
+//                 LogWidget::instance()->addLog(str, LogWidget::Info);
+//                 qDebug() <<"DeskControler VideoWidget Size:" << imgSize << screenSize << newSize << scale << offsetX << offsetY;
+//             }
+
+//             videoWidget->setPreValue(scale);
+//             scrollArea->resize(screenSize+border);
+//             scrollArea->show();
+//             scrollArea->raise(); // 确保窗口在最顶层
+
+//             //videoWidget->move(offsetX, offsetY);
+//             firstFrame = false;
+
+//             /* wTest */
+//             //scrollArea->move(offsetX-2560, 120);
+//         }
+
+//         QImage newImg = img;
+//         if (newSize != imgSize)
+//         {
+//             // 平滑 画质
+//             newImg = img.scaled(newSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+//         }
+//         videoWidget->setFrame(newImg);
+//     });
+
+//     QString uuid = ui.lineEdit->text();
+//     m_videoReceiver->startConnect(relayServer, static_cast<quint16>(relayPort), uuid);
+// }
+// void DeskControler::setupVideoSession(const QString& relayServer, quint16 relayPort, const QString& status)
+// {
+//     LogWidget::instance()->addLog(
+//         QString("Establishing video session via relay server %1:%2 - Status: %3").arg(relayServer).arg(relayPort).arg(status),
+//         LogWidget::Info);
+
+//     // 1. 创建 VideoWidget 并添加到相机页布局
+//     VideoWidget* videoWidget = new VideoWidget();
+//     // 设为 false，因为我们将在 destroyVideoWidget 中手动管理它的删除
+//     videoWidget->setAttribute(Qt::WA_DeleteOnClose, false);
+
+//     // 清空布局中可能的旧组件（防御性编程）
+//     QLayoutItem *child;
+//     while ((child = m_cameraLayout->takeAt(0)) != nullptr) {
+//         if(child->widget()) child->widget()->deleteLater();
+//         delete child;
+//     }
+//     m_cameraLayout->addWidget(videoWidget);
+
+//     // 2. 切换到相机页 (Page 2)
+//     m_mainStack->setCurrentIndex(2);
+//     // 强制刷新几何尺寸，确保后续计算按钮位置时获取的高度是正确的
+//     m_pageCamera->updateGeometry();
+//     qApp->processEvents();
+
+//     // ================= START 保留原有功能: 断开连接按钮 =================
+//     // 创建一个悬浮在 m_pageCamera 之上的按钮
+//     QPushButton* disconnectBtn = new QPushButton("断开连接", m_pageCamera);
+//     disconnectBtn->setObjectName("DisconnectBtn"); // 标记ID，方便查找删除
+
+//     // 【保留原样式】红色半透明背景，白色文字，圆角
+//     disconnectBtn->setStyleSheet(
+//         "QPushButton {"
+//         "    background-color: rgba(231, 76, 60, 220);" /* 红色背景 */
+//         "    color: white;"
+//         "    border: none;"
+//         "    border-radius: 8px;"
+//         "    font-size: 16px;"
+//         "    padding: 10px 20px;"
+//         "    font-weight: bold;"
+//         "}"
+//         "QPushButton:pressed {"
+//         "    background-color: rgba(192, 57, 43, 255);"
+//         "}"
+//         );
+//     disconnectBtn->adjustSize();
+
+//     // 【位置计算】放置在左下角
+//     int targetHeight = m_pageCamera->height();
+//     // 如果窗口高度未完全初始化，尝试获取屏幕高度兜底
+//     if (targetHeight < 100 && QGuiApplication::primaryScreen()) {
+//         targetHeight = QGuiApplication::primaryScreen()->size().height();
+//     }
+
+//     int margin = 30;
+//     int btnX = margin;
+//     int btnY = targetHeight - disconnectBtn->height() - margin;
+
+//     disconnectBtn->move(btnX, btnY);
+//     disconnectBtn->setCursor(Qt::PointingHandCursor);
+//     disconnectBtn->show();
+//     disconnectBtn->raise(); // 关键：确保按钮在 VideoWidget 之上
+
+//     // 连接点击信号到关闭处理槽函数
+//     connect(disconnectBtn, &QPushButton::clicked, this, &DeskControler::handleCloseBtnClicked);
+//     // ================= END 保留原有功能 =================
+
+//     // 3. 初始化网络接收器 (保留原有逻辑)
+//     m_videoReceiver = new VideoReceiver(this);
+//     connect(m_videoReceiver, &VideoReceiver::networkError, this, &DeskControler::onVideoReceiverError);
+
+//     connect(videoWidget, &VideoWidget::mouseEventCaptured,
+//             m_videoReceiver, &VideoReceiver::mouseEventCaptured);
+
+//     connect(videoWidget, &VideoWidget::touchEventCaptured,
+//             m_videoReceiver, &VideoReceiver::touchEventCaptured);
+
+//     QObject::connect(videoWidget, &VideoWidget::keyEventCaptured,
+//                      m_videoReceiver, &VideoReceiver::keyEventCaptured);
+
+//     // 视频帧处理
+//     static bool firstFrame = true;
+//     firstFrame = true;
+//     connect(m_videoReceiver, &VideoReceiver::frameReady, this, [videoWidget](const QImage& img) {
+//         if (firstFrame && !img.isNull())
+//         {
+//             LogWidget::instance()->addLog("Video stream started.", LogWidget::Info);
+//             firstFrame = false;
+//         }
+//         videoWidget->setFrame(img);
+//     });
+
+//     QString uuid = ui.lineEdit->text();
+//     m_videoReceiver->startConnect(relayServer, static_cast<quint16>(relayPort), uuid);
+// }
+// void DeskControler::setupVideoSession(const QString& relayServer, quint16 relayPort, const QString& status)
+// {
+//     LogWidget::instance()->addLog("Starting Video Session...", LogWidget::Info);
+
+//     // 1. 准备 VideoWidget
+//     VideoWidget* videoWidget = new VideoWidget();
+//     videoWidget->setAttribute(Qt::WA_DeleteOnClose, false); // 手动管理
+//     videoWidget->setStyleSheet("background-color: black;"); // 视频加载前显示黑色
+
+//     // 2. 将视频插入到相机页的最底层 (Row 0, Col 0, RowSpan 2, ColSpan 2)
+//     QGridLayout *layout = qobject_cast<QGridLayout*>(m_pageCamera->layout());
+//     if (layout) {
+//         // 移除旧的 video widget (如果有)
+//         QLayoutItem *item;
+//         while ((item = layout->itemAtPosition(0, 0)) != nullptr) {
+//             if (QWidget* w = item->widget()) {
+//                 // 不要删除按钮，只删除旧的 VideoWidget
+//                 if (w->objectName() != "BtnAction") {
+//                     w->deleteLater();
+//                     layout->removeItem(item);
+//                     delete item;
+//                 } else {
+//                     break; // 遇到按钮停止
+//                 }
+//             }
+//         }
+//         // 添加新视频控件，填满整个 Grid
+//         // 参数: widget, row, col, rowSpan, colSpan
+//         layout->addWidget(videoWidget, 0, 0, 2, 2);
+
+//         // 确保按钮在视频上面
+//         QWidget *btn = m_pageCamera->findChild<QPushButton*>("BtnAction");
+//         if (btn) btn->raise();
+//     }
+
+//     // 3. 切换界面
+//     m_mainStack->setCurrentIndex(2);
+
+//     // 4. 连接逻辑 (保持不变)
+//     m_scrollArea = nullptr; // 兼容旧代码
+//     m_videoReceiver = new VideoReceiver(this);
+//     connect(m_videoReceiver, &VideoReceiver::networkError, this, &DeskControler::onVideoReceiverError);
+
+//     connect(videoWidget, &VideoWidget::mouseEventCaptured, m_videoReceiver, &VideoReceiver::mouseEventCaptured);
+//     connect(videoWidget, &VideoWidget::touchEventCaptured, m_videoReceiver, &VideoReceiver::touchEventCaptured);
+//     connect(videoWidget, &VideoWidget::keyEventCaptured, m_videoReceiver, &VideoReceiver::keyEventCaptured);
+
+//     static bool firstFrame = true;
+//     firstFrame = true;
+//     connect(m_videoReceiver, &VideoReceiver::frameReady, this, [videoWidget](const QImage& img) {
+//         videoWidget->setFrame(img);
+//     });
+
+//     QString uuid = ui.lineEdit->text(); // 从隐藏的输入框读取
+//     m_videoReceiver->startConnect(relayServer, static_cast<quint16>(relayPort), uuid);
+// }
 void DeskControler::setupVideoSession(const QString& relayServer, quint16 relayPort, const QString& status)
 {
-    LogWidget::instance()->addLog(
-        QString("Establishing video session via relay server %1:%2 - Status: %3").arg(relayServer).arg(relayPort).arg(status),
-        LogWidget::Info);
+    LogWidget::instance()->addLog("Starting Video Session...", LogWidget::Info);
 
+    // 1. 准备 VideoWidget (保持你之前的修正)
     VideoWidget* videoWidget = new VideoWidget();
-    videoWidget->setAttribute(Qt::WA_DeleteOnClose, true);
+    //videoWidget->setWindowFlags(Qt::Widget);
+    videoWidget->setAttribute(Qt::WA_DeleteOnClose, false);
+    //videoWidget->setStyleSheet("background-color: black; border-image: none;");
+    videoWidget->setStyleSheet("background-color: black;");
 
-    QScrollArea* scrollArea = new QScrollArea(this);
-    // scrollArea->setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
-    m_scrollArea = scrollArea;
-#ifdef Q_OS_ANDROID
-    scrollArea->setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint);
-#else
-    scrollArea->setWindowFlags(Qt::Window);
-#endif
-    scrollArea->setWidget(videoWidget);
-    // scrollArea->setAlignment(Qt::AlignCenter);
-    scrollArea->setAttribute(Qt::WA_DeleteOnClose, true);
-    scrollArea->viewport()->setStyleSheet("background-color: white;"); //black
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrollArea->horizontalScrollBar()->setEnabled(false);
-    scrollArea->verticalScrollBar()->setEnabled(false);
-    scrollArea->horizontalScrollBar()->hide();
-    scrollArea->verticalScrollBar()->hide();
-
-    connect(scrollArea, &QObject::destroyed, this, [this]() {
-        destroyVideoSession();
-        LogWidget::instance()->addLog("Video widget closed by user.", LogWidget::Info);
-    });
-
-    scrollArea->resize(VIEW_SIZE);
-    scrollArea->raise();
-    //scrollArea->show();
-
-    // ================= START 新增代码: 断开连接按钮 =================
-    // 创建一个悬浮在ScrollArea之上的按钮
-    QPushButton* disconnectBtn = new QPushButton("断开连接", scrollArea);
-
-    // 设置样式：红色半透明背景，白色文字，圆角，确保在白色背景或视频上都可见
-    disconnectBtn->setStyleSheet(
-        "QPushButton {"
-        "    background-color: rgba(231, 76, 60, 220);" /* 红色背景 */
-        "    color: white;"
-        "    border: none;"
-        "    border-radius: 8px;"
-        "    font-size: 16px;"
-        "    padding: 10px 20px;"
-        "    font-weight: bold;"
-        "}"
-        "QPushButton:pressed {"
-        "    background-color: rgba(192, 57, 43, 255);"
-        "}"
-        );
-    disconnectBtn->adjustSize();
-
-    // 计算位置：放置在左下角
-    // 获取屏幕尺寸以确保位置在可视区域内
-    int targetHeight = scrollArea->height();
-    if (QScreen* screen = QGuiApplication::primaryScreen()) {
-        targetHeight = screen->size().height();
+    // 2. 插入视频
+    QWidget *videoContainer = m_pageCamera->findChild<QWidget*>("VideoContainer");
+    if (videoContainer && videoContainer->layout()) {
+        QLayoutItem *item;
+        while ((item = videoContainer->layout()->takeAt(0)) != nullptr) {
+            if (item->widget()) item->widget()->deleteLater();
+            delete item;
+        }
+        videoContainer->layout()->addWidget(videoWidget);
     }
 
-    int margin = 30;
-    int btnX = margin;
-    // Y轴位置：屏幕高度 - 按钮高度 - 边距
-    int btnY = targetHeight - disconnectBtn->height() - margin;
+    // ==========================================
+    // 重置下拉菜单状态
+    // ==========================================
+    if (m_slidingMenu) {
+        // 立即移动到隐藏位置，不播放动画
+        m_slidingMenu->move(0, -120);
+        m_isMenuOpen = false;
 
-    disconnectBtn->move(btnX, btnY);
-    disconnectBtn->setCursor(Qt::PointingHandCursor);
-    disconnectBtn->show();
-    disconnectBtn->raise(); // 关键：确保按钮在VideoWidget之上
+        // 确保宽度跟屏幕一致
+        if (m_slidingMenu->parentWidget()) {
+            m_slidingMenu->setFixedWidth(m_slidingMenu->parentWidget()->width());
+        }
+    }
 
-    // 连接点击信号到关闭处理槽函数
-    // 这里连接到 handleCloseBtnClicked 或 destroyVideoWidget 均可
-    connect(disconnectBtn, &QPushButton::clicked, this, &DeskControler::handleCloseBtnClicked);
-    // ================= END 新增代码 =================
+    // 3. 切换界面
+    m_mainStack->setCurrentIndex(2);
 
-
+    // 4. 连接逻辑
+    m_scrollArea = nullptr;
     m_videoReceiver = new VideoReceiver(this);
     connect(m_videoReceiver, &VideoReceiver::networkError, this, &DeskControler::onVideoReceiverError);
 
-    // m_remoteClipboard = new RemoteClipboard(this);
-    // m_remoteClipboard->setRemoteWindow(scrollArea);
-
-    // if (m_remoteClipboard->start())
-    // {
-    //     LogWidget::instance()->addLog("Global keyboard hook installed", LogWidget::Info);
-    // }
-    // else
-    // {
-    //     LogWidget::instance()->addLog("Failed to install global keyboard hook", LogWidget::Error);
-    // }
-
-    // connect(m_remoteClipboard, &RemoteClipboard::ctrlCPressed,
-    //         m_videoReceiver, &VideoReceiver::clipboardDataCaptured);
-
-    connect(videoWidget, &VideoWidget::mouseEventCaptured,
-            m_videoReceiver, &VideoReceiver::mouseEventCaptured);
-
-    connect(videoWidget, &VideoWidget::touchEventCaptured,
-            m_videoReceiver, &VideoReceiver::touchEventCaptured);
-
-    QObject::connect(videoWidget, &VideoWidget::keyEventCaptured,
-                     m_videoReceiver, &VideoReceiver::keyEventCaptured);
-
-    connect(videoWidget, &VideoWidget::closeBtnClicked, this, &DeskControler::handleCloseBtnClicked);
-
-    // QObject::connect(m_videoReceiver, &VideoReceiver::onClipboardMessageReceived,
-    //                  m_remoteClipboard, &RemoteClipboard::onClipboardMessageReceived);
+    connect(videoWidget, &VideoWidget::mouseEventCaptured, m_videoReceiver, &VideoReceiver::mouseEventCaptured);
+    connect(videoWidget, &VideoWidget::touchEventCaptured, m_videoReceiver, &VideoReceiver::touchEventCaptured);
+    connect(videoWidget, &VideoWidget::keyEventCaptured, m_videoReceiver, &VideoReceiver::keyEventCaptured);
 
     static bool firstFrame = true;
     firstFrame = true;
-    connect(m_videoReceiver, &VideoReceiver::frameReady, this, [videoWidget, scrollArea](const QImage& img) {
-        static QSize imgSize = img.size();
-        static QSize newSize = imgSize;
 
-        if (firstFrame && !img.isNull())
-        {
-            LogWidget::instance()->addLog("Video stream started and UI initialized.", LogWidget::Info);
+    // 【关键修正 3】接收帧时的处理
+    connect(m_videoReceiver, &VideoReceiver::frameReady, this, [videoWidget](const QImage& img) {
+        // 1. 设置图像
+        videoWidget->setFrame(img);
 
-            QScreen* screen = QGuiApplication::primaryScreen();
-            QSize screenSize = VIEW_SIZE;
+        // 2. [核心 Hack] 强制重置最小尺寸为 (0,0)
+        // 原有 VideoWidget 代码会在收到第一帧时强制设置 setMinimumSize 为图片大小(如1920x1080)
+        // 这会导致在小屏幕平板上布局无法缩小视频，导致显示异常。
+        // 我们这里强制把它改回来，配合 paintEvent 中的 drawImage(rect()) 实现自适应缩放。
+        //videoWidget->setMinimumSize(0, 0);
 
-            qreal scale = 1.0;
-            qreal offsetX = 0, offsetY = 0;
-
-            QSize border = QSize(4,4);
-            if (screen)
-            {
-                screenSize = screen->size();
-
-                /* wTest */
-                //QSize initialSize(1920, 1200);
-                //screenSize = initialSize;
-
-                scale = qMin(screenSize.width() * 1.0 / imgSize.width(), screenSize.height() * 1.0 / imgSize.height());
-                newSize = imgSize * scale;
-                offsetX = (imgSize.width() - newSize.width()) / 2;
-                offsetY = (imgSize.height() - newSize.height()) / 2;
-
-                QString str = QString("UI initialized scale:%1 offsetX:%2 offsetY:%3 newSize w:%4 h:%5")
-                                  .arg(scale).arg(offsetX).arg(offsetY).arg(newSize.width()).arg(newSize.height());
-                LogWidget::instance()->addLog(str, LogWidget::Info);
-                qDebug() <<"DeskControler VideoWidget Size:" << imgSize << screenSize << newSize << scale << offsetX << offsetY;
-            }
-
-            videoWidget->setPreValue(scale);
-            scrollArea->resize(screenSize+border);
-            scrollArea->show();
-            scrollArea->raise(); // 确保窗口在最顶层
-
-            //videoWidget->move(offsetX, offsetY);
-            firstFrame = false;
-
-            /* wTest */
-            //scrollArea->move(offsetX-2560, 120);
-        }
-
-        QImage newImg = img;
-        if (newSize != imgSize)
-        {
-            // 平滑 画质
-            newImg = img.scaled(newSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        }
-        videoWidget->setFrame(newImg);
+        // 3. 强制更新 (有时 OpenGL Widget 需要显式 update)
+        videoWidget->update();
     });
 
     QString uuid = ui.lineEdit->text();
     m_videoReceiver->startConnect(relayServer, static_cast<quint16>(relayPort), uuid);
 }
 
+
+// void DeskControler::destroyVideoSession()
+// {
+//     // if (m_remoteClipboard)
+//     // {
+//     //     m_remoteClipboard->stop();
+//     //     delete m_remoteClipboard;
+//     //     m_remoteClipboard = nullptr;
+//     // }
+
+//     ui.pushButton->setEnabled(true);
+//     ui.ipLineEdit_->setEnabled(true);
+//     ui.portLineEdit_->setEnabled(true);
+//     ui.lineEdit->setEnabled(true);
+
+//     if (m_videoReceiver)
+//     {
+//         m_videoReceiver->stopReceiving();
+//         delete m_videoReceiver;
+//         m_videoReceiver = nullptr;
+//     }
+//     if (m_networkManager)
+//     {
+//         m_networkManager->cleanup();
+//         delete m_networkManager;
+//         m_networkManager = nullptr;
+//     }
+// }
 void DeskControler::destroyVideoSession()
 {
-    // if (m_remoteClipboard)
+    LogWidget::instance()->addLog("Destroying Video Session...", LogWidget::Info);
+
+    // 1. 恢复 UI 状态 (输入框和按钮可用)
+    ui.pushButton->setEnabled(true);
+    ui.pushButton->setText("连接");
+
+    // // 2. 清理视频接收器 (重点：先断开连接，防止回调野指针)
+    // if (m_videoReceiver)
     // {
-    //     m_remoteClipboard->stop();
-    //     delete m_remoteClipboard;
-    //     m_remoteClipboard = nullptr;
+    //     // 断开所有信号，防止 residual frames 触发 Lambda
+    //     m_videoReceiver->disconnect();
+
+    //     // 停止接收 (假设有这个函数，如果没有也没关系，直接 delete 会触发析构)
+    //     m_videoReceiver->stopReceiving();
+
+    //     // 稍后删除，给它一点时间处理未完成的事件
+    //     m_videoReceiver->deleteLater();
+    //     m_videoReceiver = nullptr;
     // }
 
-    ui.pushButton->setEnabled(true);
-    ui.ipLineEdit_->setEnabled(true);
-    ui.portLineEdit_->setEnabled(true);
-    ui.lineEdit->setEnabled(true);
+    // // 3. 清理网络管理器
+    // if (m_networkManager)
+    // {
+    //     m_networkManager->disconnect();
+    //     m_networkManager->cleanup();
+    //     m_networkManager->deleteLater();
+    //     m_networkManager = nullptr;
+    // }
+    // 2. 剥离 NetworkManager (防止它在销毁前发出 disconnect 信号干扰)
+    NetworkManager* oldNetManager = m_networkManager;
+    m_networkManager = nullptr; // 指针置空，防止后续代码误用
 
-    if (m_videoReceiver)
-    {
-        m_videoReceiver->stopReceiving();
-        delete m_videoReceiver;
-        m_videoReceiver = nullptr;
+    if (oldNetManager) {
+        oldNetManager->disconnect(); // 断开所有信号
+        // 延时销毁：让它有时间处理完最后的 socket 事件
+        QTimer::singleShot(100, oldNetManager, [oldNetManager](){
+            oldNetManager->cleanup();
+            oldNetManager->deleteLater();
+        });
     }
-    if (m_networkManager)
-    {
-        m_networkManager->cleanup();
-        delete m_networkManager;
-        m_networkManager = nullptr;
+
+    // 3. 剥离 VideoReceiver (最易崩溃的部分)
+    VideoReceiver* oldReceiver = m_videoReceiver;
+    m_videoReceiver = nullptr; // 立即置空
+
+    if (oldReceiver) {
+        oldReceiver->disconnect(); // 立即断开 frameReady 等信号，防止刷新 UI
+
+        // 停止接收 (这是阻塞操作，但我们已经断开了信号，相对安全)
+        // 为了防止界面卡顿或死锁，我们把它也放到下一个事件循环中执行
+        QTimer::singleShot(50, oldReceiver, [oldReceiver](){
+            oldReceiver->stopReceiving();
+            oldReceiver->deleteLater();
+        });
     }
+
+    // [新增] 延时 500ms 后再恢复“连接”按钮
+    // 这样用户在视觉上看到的是：点击断开 -> 界面切回 -> 按钮变灰半秒 -> 按钮变回“连接”
+    // 这给后台清理留出了绝对安全的时间窗口
+    QTimer::singleShot(500, this, [this](){
+        ui.pushButton->setText("连接");
+        ui.pushButton->setEnabled(true);
+    });
 }
 
+
+// void DeskControler::destroyVideoWidget()
+// {
+//     if (m_scrollArea)
+//     {
+//         m_scrollArea->hide();
+//         m_scrollArea->deleteLater();
+//         m_scrollArea = nullptr;
+//     }
+// }
+// void DeskControler::destroyVideoWidget()
+// {
+//     qDebug() << "Closing Video Session...";
+
+//     // 1. 显式调用原有逻辑中的会话销毁函数（断开网络、恢复UI按钮状态）
+//     destroyVideoSession();
+
+//     // 2. 清理相机页面的 UI 资源
+//     // 查找并删除 VideoWidget 和 断开连接按钮
+//     if (m_pageCamera) {
+//         QList<QWidget*> children = m_pageCamera->findChildren<QWidget*>();
+//         for (QWidget* child : children) {
+//             // 它是我们动态添加的 VideoWidget 或 按钮
+//             child->deleteLater();
+//         }
+//     }
+
+//     // 3. 确保 Layout 清空
+//     if (m_cameraLayout) {
+//         QLayoutItem* item;
+//         while ((item = m_cameraLayout->takeAt(0)) != nullptr) {
+//             delete item;
+//         }
+//     }
+
+//     // 4. 切回主控页 (Page 1)
+//     if (m_mainStack) {
+//         m_mainStack->setCurrentIndex(1);
+//     }
+// }
 void DeskControler::destroyVideoWidget()
 {
-    if (m_scrollArea)
-    {
-        m_scrollArea->hide();
-        m_scrollArea->deleteLater();
-        m_scrollArea = nullptr;
+    // 1. 先清理底层会话 (停止数据流)
+    destroyVideoSession();
+
+    // 2. 隐藏并重置下拉菜单 (收起菜单，不删除)
+    if (m_slidingMenu) {
+        m_slidingMenu->move(0, -120); // 移回顶部
+        m_isMenuOpen = false;
     }
+
+    // // 3. 安全清理视频控件
+    // // 只清理 VideoContainer 里面的子控件 (VideoWidget)
+    // // 不要动 m_pageCamera 的其他部分
+    // if (m_pageCamera) {
+    //     QWidget *videoContainer = m_pageCamera->findChild<QWidget*>("VideoContainer");
+    //     if (videoContainer) {
+    //         // 使用 QObjectList 副本进行遍历，避免迭代器失效
+    //         QObjectList children = videoContainer->children();
+    //         for (QObject* child : children) {
+    //             if (child->isWidgetType()) {
+    //                 QWidget* w = qobject_cast<QWidget*>(child);
+    //                 // 从布局中移除
+    //                 if (videoContainer->layout()) {
+    //                     videoContainer->layout()->removeWidget(w);
+    //                 }
+    //                 // 稍后删除，防止当前可能有重绘事件
+    //                 w->deleteLater();
+    //             }
+    //         }
+    //     }
+    // }
+    // 3. 清理视频 UI
+    // 注意：我们不要直接 delete VideoWidget，而是先把它从布局里移除并隐藏
+    // 这样可以避免 OpenGL/Painter 在销毁瞬间尝试绘图导致的崩溃
+    if (m_pageCamera) {
+        QWidget *videoContainer = m_pageCamera->findChild<QWidget*>("VideoContainer");
+        if (videoContainer) {
+            QObjectList children = videoContainer->children();
+            for (QObject* child : children) {
+                if (child->isWidgetType()) {
+                    QWidget* w = qobject_cast<QWidget*>(child);
+
+                    // A. 先隐藏，停止绘图
+                    w->hide();
+
+                    // B. 移除布局
+                    if (videoContainer->layout()) {
+                        videoContainer->layout()->removeWidget(w);
+                    }
+
+                    // C. 这里的 deleteLater 是安全的，因为我们已经 hide 了
+                    w->deleteLater();
+                }
+            }
+        }
+    }
+
+    // 4. 切回主控页 (Page 1)
+    if (m_mainStack) {
+        m_mainStack->setCurrentIndex(1);
+    }
+
+    // 强制刷新，去除残留画面
+    this->update();
 }
 
 void DeskControler::onNetworkError(const QString& error)
@@ -651,7 +1421,7 @@ void DeskControler::onApplicationStateChanged(Qt::ApplicationState state)
 #ifdef Q_OS_ANDROID
         m_scrollArea->setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint);
 #endif \
-    // m_scrollArea->show();
+        // m_scrollArea->show();
         m_scrollArea->raise();
     }
 
@@ -803,4 +1573,15 @@ void DeskControler::mousePressEvent(QMouseEvent *event)
 #endif
 
     QWidget::mousePressEvent(event);
+}
+
+bool DeskControler::eventFilter(QObject *watched, QEvent *event)
+{
+    // 监听 TopContainer 的点击事件
+    if (watched->objectName() == "TopContainer" && event->type() == QEvent::MouseButtonPress)
+    {
+        toggleTopMenu(); // 触发动画
+        return true;     // 拦截事件
+    }
+    return QWidget::eventFilter(watched, event);
 }

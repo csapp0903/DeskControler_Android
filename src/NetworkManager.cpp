@@ -29,9 +29,12 @@ void NetworkManager::cleanup()
         socket->disconnect();
         if (socket->state() != QAbstractSocket::UnconnectedState)
         {
-            socket->disconnectFromHost();
+            socket->abort();
+            //socket->disconnectFromHost();
         }
-        socket->deleteLater();
+        // socket->deleteLater();
+        // socket = nullptr;
+        delete socket; // 显式删除，避免 deleteLater 的延迟风险
         socket = nullptr;
     }
 }
