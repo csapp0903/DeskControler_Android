@@ -34,7 +34,7 @@ void NetworkManager::cleanup()
         }
         // socket->deleteLater();
         // socket = nullptr;
-        delete socket; // 显式删除，避免 deleteLater 的延迟风险
+        delete socket;
         socket = nullptr;
     }
 }

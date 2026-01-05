@@ -32,7 +32,6 @@ public:
     void disableKioskMode();
 
     // 调试退出功能: 连续快速点击5次左上角区域可退出应用
-    // 注意: 此功能仅供调试使用，正式发布时应删除
     static const int DEBUG_EXIT_TAP_COUNT = 5;          // 需要点击的次数
     static const int DEBUG_EXIT_TAP_TIMEOUT_MS = 3000;  // 点击超时时间(毫秒)
     static const int DEBUG_EXIT_TAP_AREA_SIZE = 100;    // 点击区域大小(像素)
