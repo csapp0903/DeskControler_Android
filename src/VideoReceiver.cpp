@@ -79,6 +79,9 @@ void VideoReceiver::startConnect(const QString& host, quint16 port, const QStrin
 
 void VideoReceiver::onFrameDecoded(const QImage& img)
 {
+    // LogWidget::instance()->addLog(QString("[VideoReceiver] onFrameDecoded, size: %1x%2, isNull: %3")
+    //                                   .arg(img.width()).arg(img.height()).arg(img.isNull()), LogWidget::Info);
+
     emit frameReady(img);
 }
 

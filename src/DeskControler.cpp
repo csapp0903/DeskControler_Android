@@ -12,6 +12,8 @@
 #include <QMouseEvent>
 #include <QTimer>
 #include <QPainter>
+#include <QCoreApplication>
+#include <QtNetwork/QTcpSocket>
 
 #include <QtAndroidExtras/QtAndroid>
 #include <QtAndroidExtras/QAndroidJniObject>
@@ -352,10 +354,25 @@ void DeskControler::showMainPage()
     m_mainStack->setCurrentIndex(1);
 }
 
+// void DeskControler::onShutdownClicked()
+// {
+//     // 关机功能暂未实现
+//     QMessageBox::information(this, "Shutdown", "Shutdown function pending...");
+// }
 void DeskControler::onShutdownClicked()
 {
-    // 关机功能暂未实现
-    QMessageBox::information(this, "Shutdown", "Shutdown function pending...");
+#ifdef Q_OS_ANDROID
+    // 调用 KioskHelper 中的 showPowerMenu 方法
+    QAndroidJniObject::callStaticMethod<void>(
+        "org/qtproject/example/DeskControler/KioskHelper",
+        "showPowerMenu",
+        "(Landroid/app/Activity;)V",
+        QtAndroid::androidActivity().object()
+        );
+#else
+    // Windows 平台或其他平台的模拟实现
+    QMessageBox::information(this, "Shutdown", "Function available on Android only.");
+#endif
 }
 
 void DeskControler::toggleTopMenu()
@@ -666,14 +683,14 @@ void DeskControler::handleCameraImage(const QImage &image)
         }
 
         if (result.contains("WIFI") && result.contains("P")
-            && result.contains("UUID") && result.contains("IP"))
+            && result.contains("UUID") && result.contains("IP") && result.contains("PORT"))
         {
             // ui.ipLineEdit_->setText(result["IP"]);
             // ui.lineEdit->setText(result["UUID"]);
             // ui.portLineEdit_->setText(result["PORT"]);
             m_serverIp = result["IP"];
             m_uuid = result["UUID"];
-            m_serverPort = result["PORT"].toUShort();
+            m_serverPort = result.contains("PORT") ? result["PORT"].toUShort() : 21116;
 
             QString ssid = result["WIFI"];
             QString password = result["P"];
@@ -805,7 +822,7 @@ void DeskControler::onPunchHoleResponse(const QString& relayServer, int relayPor
 
 void DeskControler::setupVideoSession(const QString& relayServer, quint16 relayPort, const QString& status)
 {
-    LogWidget::instance()->addLog("Starting Video Session...", LogWidget::Info);
+    //LogWidget::instance()->addLog("Starting Video Session...", LogWidget::Info);
 
     // VideoWidget
     VideoWidget* videoWidget = new VideoWidget();
@@ -858,13 +875,14 @@ void DeskControler::setupVideoSession(const QString& relayServer, quint16 relayP
         videoWidget->update();
     });
 
-    QString uuid = ui.lineEdit->text();
+    //QString uuid = ui.lineEdit->text();
+    QString uuid = m_uuid;  // 使用成员变量
     m_videoReceiver->startConnect(relayServer, static_cast<quint16>(relayPort), uuid);
 }
 
 void DeskControler::destroyVideoSession()
 {
-    LogWidget::instance()->addLog("Destroying Video Session...", LogWidget::Info);
+    //LogWidget::instance()->addLog("Destroying Video Session...", LogWidget::Info);
 
     // 恢复 UI 状态
     ui.pushButton->setEnabled(true);
@@ -896,8 +914,7 @@ void DeskControler::destroyVideoSession()
     }
 
     // 延时 500ms 后再恢复“连接”按钮
-    // 这样用户在视觉上看到的是：点击断开 -> 界面切回 -> 按钮变灰半秒 -> 按钮变回“连接”
-    // 这给后台清理留出了绝对安全的时间窗口
+    // 点击断开 -> 界面切回 -> 按钮变灰半秒 -> 按钮变回“连接”
     QTimer::singleShot(500, this, [this](){
         ui.pushButton->setText("连接");
         ui.pushButton->setEnabled(true);
@@ -1003,7 +1020,7 @@ void DeskControler::enableKioskMode()
 #ifdef Q_OS_ANDROID
     const int MAX_RETRY = 5;  // 最大重试次数
 
-    LogWidget::instance()->addLog(QString("启用Kiosk模式 (尝试 %1/%2)").arg(m_kioskRetryCount + 1).arg(MAX_RETRY), LogWidget::Info);
+    //LogWidget::instance()->addLog(QString("启用Kiosk模式 (尝试 %1/%2)").arg(m_kioskRetryCount + 1).arg(MAX_RETRY), LogWidget::Info);
 
     // 检查Activity是否有效
     QAndroidJniObject activity = QtAndroid::androidActivity();
@@ -1012,14 +1029,14 @@ void DeskControler::enableKioskMode()
         m_kioskRetryCount++;
         if (m_kioskRetryCount < MAX_RETRY)
         {
-            LogWidget::instance()->addLog("Kiosk模式: Activity无效，稍后重试", LogWidget::Warning);
+            //LogWidget::instance()->addLog("Kiosk模式: Activity无效，稍后重试", LogWidget::Warning);
             QTimer::singleShot(500, this, [this]() {
                 enableKioskMode();
             });
         }
         else
         {
-            LogWidget::instance()->addLog("Kiosk模式: 重试次数已用尽，放弃启用", LogWidget::Error);
+            //LogWidget::instance()->addLog("Kiosk模式: 重试次数已用尽，放弃启用", LogWidget::Error);
         }
         return;
     }
@@ -1041,19 +1058,19 @@ void DeskControler::enableKioskMode()
     {
         env->ExceptionDescribe();
         env->ExceptionClear();
-        LogWidget::instance()->addLog("Kiosk模式: JNI调用异常，Java类可能未正确加载", LogWidget::Error);
+        //LogWidget::instance()->addLog("Kiosk模式: JNI调用异常，Java类可能未正确加载", LogWidget::Error);
         m_kioskModeEnabled = false;
         return;
     }
 
-    LogWidget::instance()->addLog("Kiosk模式已启用 - 调试退出: 快速点击左上角5次", LogWidget::Info);
+    //LogWidget::instance()->addLog("Kiosk模式已启用 - 调试退出: 快速点击左上角5次", LogWidget::Info);
 #endif
 }
 
 void DeskControler::disableKioskMode()
 {
 #ifdef Q_OS_ANDROID
-    LogWidget::instance()->addLog("禁用Kiosk模式", LogWidget::Info);
+    //LogWidget::instance()->addLog("禁用Kiosk模式", LogWidget::Info);
 
     m_kioskModeEnabled = false;
 
@@ -1073,7 +1090,7 @@ void DeskControler::keyPressEvent(QKeyEvent *event)
     // Kiosk模式: 拦截返回键
     if (m_kioskModeEnabled && event->key() == Qt::Key_Back)
     {
-        LogWidget::instance()->addLog("Kiosk模式: 返回键已被拦截", LogWidget::Info);
+        //LogWidget::instance()->addLog("Kiosk模式: 返回键已被拦截", LogWidget::Info);
         event->accept();
         return;
     }
@@ -1101,16 +1118,16 @@ void DeskControler::mousePressEvent(QMouseEvent *event)
                 // 重新开始计数
                 m_debugExitTapCount = 1;
                 m_debugExitTimer.start();
-                LogWidget::instance()->addLog(QString("调试退出: 点击 %1/%2").arg(m_debugExitTapCount).arg(DEBUG_EXIT_TAP_COUNT), LogWidget::Info);
+                //LogWidget::instance()->addLog(QString("调试退出: 点击 %1/%2").arg(m_debugExitTapCount).arg(DEBUG_EXIT_TAP_COUNT), LogWidget::Info);
             }
             else
             {
                 m_debugExitTapCount++;
-                LogWidget::instance()->addLog(QString("调试退出: 点击 %1/%2").arg(m_debugExitTapCount).arg(DEBUG_EXIT_TAP_COUNT), LogWidget::Info);
+                //LogWidget::instance()->addLog(QString("调试退出: 点击 %1/%2").arg(m_debugExitTapCount).arg(DEBUG_EXIT_TAP_COUNT), LogWidget::Info);
 
                 if (m_debugExitTapCount >= DEBUG_EXIT_TAP_COUNT)
                 {
-                    LogWidget::instance()->addLog("调试退出: 触发退出!", LogWidget::Warning);
+                    //LogWidget::instance()->addLog("调试退出: 触发退出!", LogWidget::Warning);
 
                     // 调用Android端退出
                     QAndroidJniObject::callStaticMethod<void>(

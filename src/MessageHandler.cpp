@@ -1,4 +1,5 @@
 #include "MessageHandler.h"
+#include "LogWidget.h"
 #include <QUuid>
 
 MessageHandler::MessageHandler(QObject* parent)
@@ -49,6 +50,8 @@ void MessageHandler::processReceivedData(const QByteArray& data)
     else if (msg.has_inpuvideoframe())
     {
         const InpuVideoFrame& frame = msg.inpuvideoframe();
+        // QByteArray frameData = QByteArray::fromStdString(frame.data());
+        // LogWidget::instance()->addLog(QString("[MessageHandler] InpuVideoFrame received, size: %1").arg(frameData.size()), LogWidget::Info);
         emit InpuVideoFrameReceived(QByteArray::fromStdString(frame.data()));
     }
     else if (msg.has_clipboardevent())
