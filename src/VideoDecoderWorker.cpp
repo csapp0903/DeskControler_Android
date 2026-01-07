@@ -49,17 +49,26 @@ VideoDecoderWorker::VideoDecoderWorker(QObject* parent)
         }
 
         QByteArray data = m_queue.dequeue();
+        // LogWidget::instance()->addLog(QString("[VideoDecoderWorker] Timer dequeue, size: %1, remaining: %2")
+        //                                   .arg(data.size()).arg(m_queue.size()), LogWidget::Info);
+
+
         QImage image;
         bool ret = image.loadFromData(data, "JPG");
         if (ret)
         {
-            QString str1 = QString("QImage loadFromData took: %1 ms image w h: %2 %3").arg(QString::number(timer.elapsed()),
-                                                                                           QString::number(image.width()),
-                                                                                           QString::number(image.height()));
-            LogWidget::instance()->addLog(str1, LogWidget::Info);
-            qDebug() << str1;
+            // QString str1 = QString("QImage loadFromData took: %1 ms image w h: %2 %3").arg(QString::number(timer.elapsed()),
+            //                                                                                QString::number(image.width()),
+            //                                                                                QString::number(image.height()));
+            // LogWidget::instance()->addLog(str1, LogWidget::Info);
+            // qDebug() << str1;
 
             emit frameDecoded(image);
+        }
+        else
+        {
+            // LogWidget::instance()->addLog(QString("[VideoDecoderWorker] Decode FAILED, size: %1")
+            //                                   .arg(data.size()), LogWidget::Error);
         }
     });
 
@@ -96,6 +105,7 @@ void VideoDecoderWorker::cleanup()
 
 void VideoDecoderWorker::decodePacket(const QByteArray &packetData)
 {
+    //LogWidget::instance()->addLog(QString("[VideoDecoderWorker] decodePacket, size: %1").arg(packetData.size()), LogWidget::Info);
     QElapsedTimer timer;
     timer.start();
 
@@ -106,9 +116,9 @@ void VideoDecoderWorker::decodePacket(const QByteArray &packetData)
     }
     m_queue.enqueue(packetData);
 
-    QString str = QString("packetData size: %1 queueSize: %2").arg(QString::number(packetData.size()), QString::number(m_queue.size()));
-    qDebug() << str;
-    LogWidget::instance()->addLog(str, LogWidget::Info);
+    // QString str = QString("packetData size: %1 queueSize: %2").arg(QString::number(packetData.size()), QString::number(m_queue.size()));
+    // qDebug() << str;
+    // LogWidget::instance()->addLog(str, LogWidget::Info);
 
     // QImage image;
     // bool ret = image.loadFromData(packetData, "JPG");

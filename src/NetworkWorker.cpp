@@ -110,6 +110,8 @@ void NetworkWorker::onSocketConnected()
 
     // 连接成功后发送 RequestRelay 消息
     sendRequestRelay();
+
+    LogWidget::instance()->addLog("[NetworkWorker] DEBUG: Waiting for server data...", LogWidget::Info);
 }
 
 void NetworkWorker::sendRequestRelay()
@@ -148,7 +150,15 @@ void NetworkWorker::sendRequestRelay()
 
 void NetworkWorker::onSocketReadyRead()
 {
-    m_buffer.append(m_socket->readAll());
+    LogWidget::instance()->addLog("[NetworkWorker] onSocketReadyRead CALLED!", LogWidget::Info);
+
+    //m_buffer.append(m_socket->readAll());
+    QByteArray newData = m_socket->readAll();
+    m_buffer.append(newData);
+
+    LogWidget::instance()->addLog(QString("[NetworkWorker] received bytes: %1, buffer total: %2")
+                                      .arg(newData.size()).arg(m_buffer.size()), LogWidget::Info);
+
 
     // 协议： [4字节大端序包长] + [包数据]
     while (m_buffer.size() >= 4)

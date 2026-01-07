@@ -33,6 +33,9 @@ VideoWidget::VideoWidget(QWidget* parent)
 
 void VideoWidget::setFrame(const QImage& image)
 {
+    // LogWidget::instance()->addLog(QString("[VideoWidget] setFrame, size: %1x%2, isNull: %3")
+    //                                   .arg(image.width()).arg(image.height()).arg(image.isNull()), LogWidget::Info);
+
     m_currentFrame = image;
 
     // // 首帧时设置固定尺寸（用于滚动区域）
@@ -161,7 +164,7 @@ void VideoWidget::mouseMoveEvent(QMouseEvent* event)
     {
         return;
     }
-    qDebug() << "-----mouseMoveEvent" << QDateTime::currentDateTime().toString("hh:mm:ss.zzz") << (event->source() == Qt::MouseEventNotSynthesized);
+    //qDebug() << "-----mouseMoveEvent" << QDateTime::currentDateTime().toString("hh:mm:ss.zzz") << (event->source() == Qt::MouseEventNotSynthesized);
 
     if (event->buttons() & Qt::LeftButton)
     {
@@ -255,8 +258,8 @@ bool VideoWidget::handleTouchEvent(QTouchEvent *event)
         touchPt.pressure = pt.pressure();
         touchPt.size = pt.ellipseDiameters().width();
 
-        QString timeTemp = QDateTime::currentDateTime().toString("yyyy-hh-mm ss.zzz");
-        qDebug() << "["+timeTemp+"]" << "----touchPoints:" << touchPt << touchPhase << touchPoints.size() << count;
+        // QString timeTemp = QDateTime::currentDateTime().toString("yyyy-hh-mm ss.zzz");
+        // qDebug() << "["+timeTemp+"]" << "----touchPoints:" << touchPt << touchPhase << touchPoints.size() << count;
 
         points.append(touchPt);
     }
