@@ -42,6 +42,11 @@ private:
     QImage m_currentFrame;
     bool m_firstFrame = true;
     qreal m_scale = 1.0;
+
+    // 偏移量变量
+    int m_offsetX = 0;
+    int m_offsetY = 0;
+
     QPoint m_hoverPt = QPoint(0, 0);
 
     void handleMouseEvent(QPointF pos, int mask, int value);

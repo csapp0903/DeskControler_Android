@@ -10,6 +10,8 @@
 
 VideoWidget::VideoWidget(QWidget* parent)
     : QWidget(parent)
+    , m_offsetX(0)
+    , m_offsetY(0)
 {
     //setWindowFlags(Qt::Window);
     setFocusPolicy(Qt::StrongFocus);
@@ -54,18 +56,57 @@ void VideoWidget::setPreValue(const qreal &scale)
     m_scale = scale;
 }
 
+// void VideoWidget::paintEvent(QPaintEvent* event)
+// {
+//     Q_UNUSED(event);
+//     QPainter painter(this);
+//     if (!m_currentFrame.isNull())
+//     {
+//         painter.drawImage(rect(), m_currentFrame);
+//     }
+//     else
+//     {
+//         painter.fillRect(rect(), Qt::black);
+//     }
+// }
 void VideoWidget::paintEvent(QPaintEvent* event)
 {
     Q_UNUSED(event);
     QPainter painter(this);
-    if (!m_currentFrame.isNull())
+
+    painter.fillRect(rect(), Qt::black);
+
+    if (m_currentFrame.isNull())
     {
-        painter.drawImage(rect(), m_currentFrame);
+        return;
     }
-    else
-    {
-        painter.fillRect(rect(), Qt::black);
-    }
+
+    // 计算保持比例的缩放
+    QSize widgetSize = this->size();
+    QSize imageSize = m_currentFrame.size();
+
+    if (imageSize.isEmpty()) return;
+
+    qreal scaleW = (qreal)widgetSize.width() / imageSize.width();
+    qreal scaleH = (qreal)widgetSize.height() / imageSize.height();
+
+    m_scale = qMin(scaleW, scaleH);
+
+    // 计算实际显示的宽高
+    int drawW = static_cast<int>(imageSize.width() * m_scale);
+    int drawH = static_cast<int>(imageSize.height() * m_scale);
+
+    // 计算偏移量
+    // 水平居中
+    m_offsetX = (widgetSize.width() - drawW) / 2;
+
+    // 垂直下对齐
+    // 如果要垂直居中，则是 (widgetSize.height() - drawH) / 2
+    m_offsetY = widgetSize.height() - drawH;
+
+    // 在计算出的区域绘制图像
+    QRect drawRect(m_offsetX, m_offsetY, drawW, drawH);
+    painter.drawImage(drawRect, m_currentFrame);
 }
 
 void VideoWidget::mousePressEvent(QMouseEvent* event)
@@ -191,11 +232,22 @@ void VideoWidget::keyReleaseEvent(QKeyEvent* event)
     emit keyEventCaptured(event->key(), false);
 }
 
+// void VideoWidget::handleMouseEvent(QPointF pos, int mask, int value)
+// {
+//     if (!pos.isNull())
+//     {
+//         emit mouseEventCaptured(static_cast<int>(pos.x() / m_scale), static_cast<int>(pos.y() / m_scale), mask, value);
+//     }
+// }
 void VideoWidget::handleMouseEvent(QPointF pos, int mask, int value)
 {
-    if (!pos.isNull())
+    if (!pos.isNull() && m_scale > 0)
     {
-        emit mouseEventCaptured(static_cast<int>(pos.x() / m_scale), static_cast<int>(pos.y() / m_scale), mask, value);
+        // 先减去偏移量，再除以缩放比例
+        int x = static_cast<int>((pos.x() - m_offsetX) / m_scale);
+        int y = static_cast<int>((pos.y() - m_offsetY) / m_scale);
+
+        emit mouseEventCaptured(x, y, mask, value);
     }
 }
 
@@ -252,8 +304,16 @@ bool VideoWidget::handleTouchEvent(QTouchEvent *event)
     {
         DeskTouchPoint touchPt;
         touchPt.id = pt.id();
-        touchPt.x  = pt.pos().x() / m_scale;
-        touchPt.y  = pt.pos().y() / m_scale;
+        // touchPt.x  = pt.pos().x() / m_scale;
+        // touchPt.y  = pt.pos().y() / m_scale;
+        // 触摸点坐标转换
+        if (m_scale > 0) {
+            touchPt.x  = (pt.pos().x() - m_offsetX) / m_scale;
+            touchPt.y  = (pt.pos().y() - m_offsetY) / m_scale;
+        } else {
+            touchPt.x = 0;
+            touchPt.y = 0;
+        }
         touchPt.phase = touchPhase;
         touchPt.pressure = pt.pressure();
         touchPt.size = pt.ellipseDiameters().width();
