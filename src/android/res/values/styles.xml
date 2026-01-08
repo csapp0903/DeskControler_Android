@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 基础主题 -->
+    <style name="AppTheme" parent="android:Theme.DeviceDefault.Light.NoActionBar">
+    </style>
+
+    <!-- 全屏沉浸式主题 - 解决底部黑色区域问题 -->
+    <style name="AppTheme.Fullscreen" parent="android:Theme.DeviceDefault.Light.NoActionBar">
+        <!-- 窗口全屏 -->
+        <item name="android:windowFullscreen">true</item>
+
+        <!-- 无标题栏 -->
+        <item name="android:windowNoTitle">true</item>
+
+        <!-- 允许内容延伸到状态栏和导航栏下方 -->
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:windowTranslucentNavigation">false</item>
+
+        <!-- 状态栏和导航栏透明 (API 21+) -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+
+        <!-- 允许绘制系统栏背景 -->
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+
+        <!-- 内容覆盖整个窗口 -->
+        <item name="android:windowContentOverlay">@null</item>
+
+        <!-- 窗口背景 -->
+        <item name="android:windowBackground">@android:color/black</item>
+
+        <!-- 禁用窗口动画，避免切换时闪烁 -->
+        <item name="android:windowAnimationStyle">@null</item>
+
+        <!-- 沉浸式布局 -->
+        <item name="android:fitsSystemWindows">false</item>
+    </style>
+
+    <!-- 针对 API 28+ (Android P) 的全屏主题，支持刘海屏 -->
+    <style name="AppTheme.Fullscreen.Notch" parent="AppTheme.Fullscreen">
+        <!-- 刘海屏适配 - 内容延伸到刘海区域 -->
+        <!-- 注意：layoutInDisplayCutoutMode 需要在代码中设置 -->
+    </style>
+</resources>
