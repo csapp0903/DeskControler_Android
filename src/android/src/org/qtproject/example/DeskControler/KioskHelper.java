@@ -8,16 +8,22 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.View;
+import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 
 /**
  * Kiosk模式辅助类
  * 使用Device Owner实现真正的屏幕锁定（无确认框）
+ *
+ * 修复：底部黑色区域问题 - 通过设置透明导航栏和正确的布局标志
  */
 public class KioskHelper {
     private static final String TAG = "KioskHelper";
@@ -25,6 +31,28 @@ public class KioskHelper {
     private static Runnable focusChecker = null;
     private static boolean isKioskEnabled = false;
     private static boolean isDeviceOwner = false;
+    private static PowerMenuService powerMenuService = null;
+
+    /**
+     * 设置PowerMenuService实例
+     * @param service PowerMenuService实例，或null表示服务断开
+     */
+    public static void setPowerMenuService(PowerMenuService service) {
+        powerMenuService = service;
+        if (service != null) {
+            Log.i(TAG, "PowerMenuService 已注册");
+        } else {
+            Log.i(TAG, "PowerMenuService 已注销");
+        }
+    }
+
+    /**
+     * 获取PowerMenuService实例
+     * @return PowerMenuService实例，如果服务未连接则返回null
+     */
+    public static PowerMenuService getPowerMenuService() {
+        return powerMenuService;
+    }
 
     /**
      * 启用Kiosk模式
@@ -47,25 +75,83 @@ public class KioskHelper {
                 @Override
                 public void run() {
                     try {
-                        // 1. 保持屏幕常亮
-                        activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                        Window window = activity.getWindow();
 
-                        // 2. 全屏显示
-                        activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                        // 1. 设置窗口标志 - 全屏、常亮
+                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-                        // 3. 隐藏系统UI
+                        // 2. 关键修复：设置布局延伸到系统栏区域，避免黑色区域
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            // 清除旧的全屏标志，使用新的沉浸式方式
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+
+                            // 允许绘制系统栏背景，并设置为透明
+                            window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+                            window.setStatusBarColor(Color.TRANSPARENT);
+                            window.setNavigationBarColor(Color.TRANSPARENT);
+
+                            // 设置DecorView布局延伸到系统栏下方
+                            View decorView = window.getDecorView();
+                            decorView.setSystemUiVisibility(
+                                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            );
+                        } else {
+                            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                        }
+
+                        // 3. 针对刘海屏的处理 (Android P及以上)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            WindowManager.LayoutParams lp = window.getAttributes();
+                            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                            window.setAttributes(lp);
+                        }
+
+                        // 4. 隐藏系统UI
                         hideSystemUI(activity);
 
-                        // 4. 检查是否为Device Owner并启动锁定任务模式
+                        // 5. 检查是否为Device Owner并启动锁定任务模式
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                             startLockTaskIfDeviceOwner(activity);
                         }
 
-                        // 5. 设置系统UI监听器
+                        // 6. 设置系统UI监听器
                         setupSystemUIListener(activity);
 
-                        // 6. 启动前台监控
+                        // 7. 启动前台监控
                         startFocusMonitor(activity);
+
+                        // 8. 多次延迟隐藏系统UI，确保完全生效
+                        // 首次延迟100ms
+                        handler.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (isKioskEnabled) {
+                                    hideSystemUI(activity);
+                                }
+                            }
+                        }, 100);
+
+                        // 二次延迟500ms
+                        handler.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (isKioskEnabled) {
+                                    hideSystemUI(activity);
+                                }
+                            }
+                        }, 500);
+
+                        // 三次延迟1000ms（应对某些慢速设备）
+                        handler.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (isKioskEnabled) {
+                                    hideSystemUI(activity);
+                                }
+                            }
+                        }, 1000);
 
                         Log.i(TAG, "Kiosk模式已启用");
                     } catch (Exception e) {
@@ -145,16 +231,20 @@ public class KioskHelper {
         decorView.setOnSystemUiVisibilityChangeListener(new View.OnSystemUiVisibilityChangeListener() {
             @Override
             public void onSystemUiVisibilityChange(int visibility) {
-                if (isKioskEnabled && (visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) == 0) {
-                    // 系统UI可见时，立即重新隐藏
-                    decorView.postDelayed(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (isKioskEnabled) {
-                                hideSystemUI(activity);
+                if (isKioskEnabled) {
+                    // 检测系统UI是否变得可见
+                    boolean systemBarsVisible = (visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) == 0;
+                    if (systemBarsVisible) {
+                        // 系统UI可见时，立即重新隐藏
+                        decorView.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (isKioskEnabled) {
+                                    hideSystemUI(activity);
+                                }
                             }
-                        }
-                    }, 100);
+                        }, 50); // 缩短延迟时间，更快响应
+                    }
                 }
             }
         });
@@ -233,6 +323,7 @@ public class KioskHelper {
 
     /**
      * 隐藏系统UI（导航栏和状态栏）
+     * 修复：使用正确的标志组合，避免底部黑色区域
      */
     public static void hideSystemUI(final Activity activity) {
         if (activity == null) return;
@@ -241,16 +332,38 @@ public class KioskHelper {
             activity.runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    View decorView = activity.getWindow().getDecorView();
+                    Window window = activity.getWindow();
+                    View decorView = window.getDecorView();
 
-                    int uiOptions = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                            | View.SYSTEM_UI_FLAG_FULLSCREEN
-                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
+                    // Android 11 (API 30) 及以上使用新的 WindowInsetsController
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        WindowInsetsController controller = window.getInsetsController();
+                        if (controller != null) {
+                            controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                            controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                        }
+                    } else {
+                        // Android 10及以下使用传统方式
+                        int uiOptions = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
 
-                    decorView.setSystemUiVisibility(uiOptions);
+                        // 低光模式 - 使导航栏图标变暗（某些设备上有效）
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+                            uiOptions |= View.SYSTEM_UI_FLAG_LOW_PROFILE;
+                        }
+
+                        decorView.setSystemUiVisibility(uiOptions);
+                    }
+
+                    // 确保导航栏颜色透明
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        window.setNavigationBarColor(Color.TRANSPARENT);
+                        window.setStatusBarColor(Color.TRANSPARENT);
+                    }
                 }
             });
         } catch (Exception e) {
@@ -308,10 +421,52 @@ public class KioskHelper {
      */
     public static void showSystemUI(Activity activity) {
         if (activity == null) return;
+
         View decorView = activity.getWindow().getDecorView();
-        decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = activity.getWindow().getInsetsController();
+            if (controller != null) {
+                controller.show(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+            }
+        } else {
+            decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        }
     }
 
+
+    /**
+     * 显示电源菜单（关机/重启）
+     */
+    public static void showPowerMenu(final Activity activity) {
+        if (activity == null) return;
+
+        try {
+            // 优先使用AccessibilityService方式呼出电源菜单
+            if (powerMenuService != null) {
+                boolean success = powerMenuService.showPowerMenu();
+                if (success) {
+                    Log.i(TAG, "通过AccessibilityService呼出电源菜单成功");
+                    return;
+                }
+            }
+
+            // 备选方案：尝试使用Device Policy Manager的关机功能（需要Device Owner）
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                DevicePolicyManager dpm = (DevicePolicyManager) activity.getSystemService(Context.DEVICE_POLICY_SERVICE);
+                if (dpm != null && dpm.isDeviceOwnerApp(activity.getPackageName())) {
+                    ComponentName adminComponent = new ComponentName(activity, MyDeviceAdminReceiver.class);
+                    // 重启设备
+                    // dpm.reboot(adminComponent); // 取消注释以启用
+                    Log.i(TAG, "Device Owner可以使用reboot功能");
+                }
+            }
+
+            Log.w(TAG, "无法呼出电源菜单，PowerMenuService未连接且非Device Owner");
+        } catch (Exception e) {
+            Log.e(TAG, "显示电源菜单失败: " + e.getMessage());
+        }
+    }
 
     /**
      * 退出应用（调试用）

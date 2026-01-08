@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 11 (API 30+) 全屏沉浸式主题 -->
+    <style name="AppTheme.Fullscreen" parent="android:Theme.DeviceDefault.Light.NoActionBar">
+        <!-- 窗口全屏 -->
+        <item name="android:windowFullscreen">true</item>
+
+        <!-- 无标题栏 -->
+        <item name="android:windowNoTitle">true</item>
+
+        <!-- 状态栏和导航栏透明 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+
+        <!-- 允许绘制系统栏背景 -->
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+
+        <!-- 使用对比度强制导航栏 -->
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+
+        <!-- 内容覆盖整个窗口 -->
+        <item name="android:windowContentOverlay">@null</item>
+
+        <!-- 窗口背景 -->
+        <item name="android:windowBackground">@android:color/black</item>
+
+        <!-- 沉浸式布局 -->
+        <item name="android:fitsSystemWindows">false</item>
+
+        <!-- 窗口布局延伸到刘海区域 -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>
