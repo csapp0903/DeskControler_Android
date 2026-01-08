@@ -38,6 +38,7 @@ const QString FONT_TITLE_EN     = "24px";     // 英文标题大小
 const QString FONT_TITLE_CN     = "48px";     // 中文标题大小 (加粗)
 const QString FONT_BTN          = "20px";     // 按钮文字大小
 
+
 DeskControler::DeskControler(QWidget* parent)
     : QWidget(parent),
     m_networkManager(nullptr),
@@ -72,7 +73,7 @@ DeskControler::DeskControler(QWidget* parent)
     initCustomUI();
     applyCustomStyles();
 
-    connect(ui.pushButton, &QPushButton::clicked, this, &DeskControler::onConnectClicked);
+    //connect(ui.pushButton, &QPushButton::clicked, this, &DeskControler::onConnectClicked);
     // 应用重新激活
     connect(qApp, &QGuiApplication::applicationStateChanged, this, &DeskControler::onApplicationStateChanged);
 
@@ -501,14 +502,24 @@ void DeskControler::initCamera()
     m_camera->focus()->setFocusMode(QCameraFocus::ContinuousFocus);
     m_camera->setViewfinderSettings(settings);
 
-    // 摄像头全屏显示
-    m_cameraLabel = new QLabel();
+    // // 摄像头全屏显示
+    // m_cameraLabel = new QLabel();
+    // m_cameraLabel->setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+
+    // QRect rect = QApplication::primaryScreen()->geometry();
+    // qDebug() << "-----geometry:" << rect;
+    // m_cameraLabel->setGeometry(rect);
+    // m_cameraLabel->setAlignment(Qt::AlignCenter);
+
+    // 使用自定义的预览控件
+    m_cameraLabel = new CameraPreviewWidget(); // 这里原本是 new QLabel()
     m_cameraLabel->setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
 
     QRect rect = QApplication::primaryScreen()->geometry();
-    qDebug() << "-----geometry:" << rect;
     m_cameraLabel->setGeometry(rect);
-    m_cameraLabel->setAlignment(Qt::AlignCenter);
+    // m_cameraLabel->setAlignment(Qt::AlignCenter);
+
+    //QPushButton *closeBtn = new QPushButton("关闭相机", m_cameraLabel);
 
     //QPushButton *closeBtn = new QPushButton("X", m_cameraLabel);
     QPushButton *closeBtn = new QPushButton("关闭相机", m_cameraLabel);
@@ -601,114 +612,192 @@ bool DeskControler::connectToWiFi(const QString &ssid, const QString &password)
     return ret;
 }
 
+// void DeskControler::handleCameraImage(const QImage &image)
+// {
+//     QPixmap pixmap = QPixmap::fromImage(image);
+
+//     // ==========================================
+//     // 绘制二维码辅助框
+//     // ==========================================
+//     QPainter p(&pixmap);
+//     p.setRenderHint(QPainter::Antialiasing);
+
+//     int w = pixmap.width();
+//     int h = pixmap.height();
+
+//     // 定义扫描框大小
+//     int boxSize = qMin(w, h) * 0.6;
+//     int x = (w - boxSize) / 2;
+//     int y = (h - boxSize) / 2;
+
+//     // --- 绘制扫描框四角 ---
+//     QColor cornerColor("#00BFA5");
+//     QPen pen(cornerColor);
+//     pen.setWidth(6); // 线条宽度
+//     p.setPen(pen);
+//     p.setBrush(Qt::NoBrush);
+
+//     int cornerLen = 40; // 拐角长度
+//     // 左上角
+//     p.drawLine(x, y, x + cornerLen, y);
+//     p.drawLine(x, y, x, y + cornerLen);
+//     // 右上角
+//     p.drawLine(x + boxSize, y, x + boxSize - cornerLen, y);
+//     p.drawLine(x + boxSize, y, x + boxSize, y + cornerLen);
+//     // 左下角
+//     p.drawLine(x, y + boxSize, x + cornerLen, y + boxSize);
+//     p.drawLine(x, y + boxSize, x, y + boxSize - cornerLen);
+//     // 右下角
+//     p.drawLine(x + boxSize, y + boxSize, x + boxSize - cornerLen, y + boxSize);
+//     p.drawLine(x + boxSize, y + boxSize, x + boxSize, y + boxSize - cornerLen);
+
+//     // --- 绘制提示文字 ---
+//     // 增加一点阴影，防止背景太亮看不清文字
+//     p.setPen(Qt::black); // 阴影色
+//     QFont font = p.font();
+//     font.setPixelSize(36);
+//     font.setBold(true);
+//     p.setFont(font);
+
+//     QRect textRect(0, y + boxSize + 30, w, 50);
+//     // 先画阴影 (偏移 2px)
+//     p.drawText(textRect.translated(2, 2), Qt::AlignCenter, "将二维码放入框内自动扫描");
+
+//     // 再画正文 (白色)
+//     p.setPen(Qt::white);
+//     p.drawText(textRect, Qt::AlignCenter, "将二维码放入框内自动扫描");
+
+//     p.end();
+
+//     // 显示处理后的图像
+//     m_cameraLabel->setPixmap(pixmap);
+
+//     //m_cameraLabel->setPixmap(pixmap);
+
+//     QString info = QString::fromLocal8Bit(m_decoder.decodeImage(image).toLatin1());
+//     LogWidget::instance()->addLog(QString("Camera Info:%1").arg(info), LogWidget::Info);
+//     if (info.contains(";;"))
+//     {
+//         QMap<QString, QString> result;
+//         QStringList groups = info.split(";;", Qt::SkipEmptyParts);
+//         for (const QString &group : groups)
+//         {
+//             QStringList keyValue = group.split(":");
+//             if (keyValue.size() >= 2)
+//             {
+//                 QString key = keyValue[0].trimmed().toUpper();
+//                 QString value = keyValue[1].trimmed();
+
+//                 // 存储到结果映射中
+//                 result.insert(key, value);
+//             }
+//         }
+
+//         if (result.contains("WIFI") && result.contains("P")
+//             && result.contains("UUID") && result.contains("IP") && result.contains("PORT"))
+//         {
+//             // ui.ipLineEdit_->setText(result["IP"]);
+//             // ui.lineEdit->setText(result["UUID"]);
+//             // ui.portLineEdit_->setText(result["PORT"]);
+//             m_serverIp = result["IP"];
+//             m_uuid = result["UUID"];
+//             m_serverPort = result.contains("PORT") ? result["PORT"].toUShort() : 21116;
+
+//             QString ssid = result["WIFI"];
+//             QString password = result["P"];
+
+//             stopCamera();
+//             qDebug() << "-----Start ConnectToWiFi:" << ssid << password;
+//             LogWidget::instance()->addLog(QString("Start ConnectToWiFi:%1").arg(ssid), LogWidget::Info);
+
+//             connectToWiFi(ssid, password);
+//             QThread::msleep(3000);
+
+//             qDebug() << "-----Start ConnectToServer:";
+//             LogWidget::instance()->addLog(QString("Start ConnectToServer"), LogWidget::Info);
+//             onConnectClicked();
+//         }
+
+//         qDebug() << "-----info:" << result;
+//     }
+// }
 void DeskControler::handleCameraImage(const QImage &image)
 {
-    QPixmap pixmap = QPixmap::fromImage(image);
+    // 直接将图片传递给预览控件，不再在主线程进行QPainter绘制和QPixmap转换
+    if (m_cameraLabel) {
+        m_cameraLabel->setImage(image);
+    }
 
-    // ==========================================
-    // 绘制二维码辅助框
-    // ==========================================
-    QPainter p(&pixmap);
-    p.setRenderHint(QPainter::Antialiasing);
+    // 丢帧策略：如果后台正在解码，直接忽略当前帧
+    if (m_isDecoding) {
+        return;
+    }
 
-    int w = pixmap.width();
-    int h = pixmap.height();
-
-    // 定义扫描框大小
+    // 准备解码，裁剪ROI
+    // 只需要裁剪出中间框的部分
+    int w = image.width();
+    int h = image.height();
     int boxSize = qMin(w, h) * 0.6;
     int x = (w - boxSize) / 2;
     int y = (h - boxSize) / 2;
 
-    // --- 绘制扫描框四角 ---
-    QColor cornerColor("#00BFA5");
-    QPen pen(cornerColor);
-    pen.setWidth(6); // 线条宽度
-    p.setPen(pen);
-    p.setBrush(Qt::NoBrush);
+    QImage processFrame = image.copy(x, y, boxSize, boxSize).convertToFormat(QImage::Format_Grayscale8);
 
-    int cornerLen = 40; // 拐角长度
-    // 左上角
-    p.drawLine(x, y, x + cornerLen, y);
-    p.drawLine(x, y, x, y + cornerLen);
-    // 右上角
-    p.drawLine(x + boxSize, y, x + boxSize - cornerLen, y);
-    p.drawLine(x + boxSize, y, x + boxSize, y + cornerLen);
-    // 左下角
-    p.drawLine(x, y + boxSize, x + cornerLen, y + boxSize);
-    p.drawLine(x, y + boxSize, x, y + boxSize - cornerLen);
-    // 右下角
-    p.drawLine(x + boxSize, y + boxSize, x + boxSize - cornerLen, y + boxSize);
-    p.drawLine(x + boxSize, y + boxSize, x + boxSize, y + boxSize - cornerLen);
+    m_isDecoding = true;
 
-    // --- 绘制提示文字 ---
-    // 增加一点阴影，防止背景太亮看不清文字
-    p.setPen(Qt::black); // 阴影色
-    QFont font = p.font();
-    font.setPixelSize(36);
-    font.setBold(true);
-    p.setFont(font);
+    // 异步解码
+    QtConcurrent::run([this, processFrame]() {
+        // 在子线程中创建临时的解码器
+        QZXing decoder;
+        decoder.setDecoder(QZXing::DecoderFormat_QR_CODE);
+        // 因为已经裁剪了 ROI，图像较小，可以开启 TryHarder
+        decoder.setTryHarderBehaviour(QZXing::TryHarderBehaviour_ThoroughScanning | QZXing::TryHarderBehaviour_Rotate);
 
-    QRect textRect(0, y + boxSize + 30, w, 50);
-    // 先画阴影 (偏移 2px)
-    p.drawText(textRect.translated(2, 2), Qt::AlignCenter, "将二维码放入框内自动扫描");
+        QString info = decoder.decodeImage(processFrame);
 
-    // 再画正文 (白色)
-    p.setPen(Qt::white);
-    p.drawText(textRect, Qt::AlignCenter, "将二维码放入框内自动扫描");
+        // 将结果传回主线程
+        QMetaObject::invokeMethod(this, [this, info]() {
+            m_isDecoding = false; // 解锁
 
-    p.end();
+            if (!info.isEmpty()) {
+                LogWidget::instance()->addLog(QString("Camera Info:%1").arg(info), LogWidget::Info);
 
-    // 显示处理后的图像
-    m_cameraLabel->setPixmap(pixmap);
+                // 处理原有的解析逻辑
+                if (info.contains(";;"))
+                {
+                    QMap<QString, QString> result;
+                    QStringList groups = info.split(";;", Qt::SkipEmptyParts);
+                    for (const QString &group : groups)
+                    {
+                        QStringList keyValue = group.split(":");
+                        if (keyValue.size() >= 2)
+                        {
+                            result.insert(keyValue[0].trimmed().toUpper(), keyValue[1].trimmed());
+                        }
+                    }
 
-    //m_cameraLabel->setPixmap(pixmap);
+                    if (result.contains("WIFI") && result.contains("P")
+                        && result.contains("UUID") && result.contains("IP"))
+                    {
+                        m_serverIp = result["IP"];
+                        m_uuid = result["UUID"];
+                        m_serverPort = result.contains("PORT") ? result["PORT"].toUShort() : 21116;
+                        QString ssid = result["WIFI"];
+                        QString password = result["P"];
 
-    QString info = QString::fromLocal8Bit(m_decoder.decodeImage(image).toLatin1());
-    LogWidget::instance()->addLog(QString("Camera Info:%1").arg(info), LogWidget::Info);
-    if (info.contains(";;"))
-    {
-        QMap<QString, QString> result;
-        QStringList groups = info.split(";;", Qt::SkipEmptyParts);
-        for (const QString &group : groups)
-        {
-            QStringList keyValue = group.split(":");
-            if (keyValue.size() >= 2)
-            {
-                QString key = keyValue[0].trimmed().toUpper();
-                QString value = keyValue[1].trimmed();
+                        stopCamera(); // 识别成功，关闭相机
 
-                // 存储到结果映射中
-                result.insert(key, value);
+                        // 连接逻辑
+                        LogWidget::instance()->addLog(QString("Start ConnectToWiFi:%1").arg(ssid), LogWidget::Info);
+                        connectToWiFi(ssid, password);
+                        QTimer::singleShot(3000, this, [this](){
+                            onConnectClicked();
+                        });
+                    }
+                }
             }
-        }
-
-        if (result.contains("WIFI") && result.contains("P")
-            && result.contains("UUID") && result.contains("IP") && result.contains("PORT"))
-        {
-            // ui.ipLineEdit_->setText(result["IP"]);
-            // ui.lineEdit->setText(result["UUID"]);
-            // ui.portLineEdit_->setText(result["PORT"]);
-            m_serverIp = result["IP"];
-            m_uuid = result["UUID"];
-            m_serverPort = result.contains("PORT") ? result["PORT"].toUShort() : 21116;
-
-            QString ssid = result["WIFI"];
-            QString password = result["P"];
-
-            stopCamera();
-            qDebug() << "-----Start ConnectToWiFi:" << ssid << password;
-            LogWidget::instance()->addLog(QString("Start ConnectToWiFi:%1").arg(ssid), LogWidget::Info);
-
-            connectToWiFi(ssid, password);
-            QThread::msleep(3000);
-
-            qDebug() << "-----Start ConnectToServer:";
-            LogWidget::instance()->addLog(QString("Start ConnectToServer"), LogWidget::Info);
-            onConnectClicked();
-        }
-
-        qDebug() << "-----info:" << result;
-    }
+        });
+    });
 }
 
 void DeskControler::handleCloseBtnClicked()
