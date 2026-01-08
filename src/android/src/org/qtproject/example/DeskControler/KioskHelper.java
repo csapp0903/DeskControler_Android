@@ -21,9 +21,9 @@ import android.view.WindowManager;
 
 /**
  * Kiosk模式辅助类
- * 使用Device Owner实现真正的屏幕锁定（无确认框）
+ * 使用Device Owner实现屏幕锁定（无确认框）
  *
- * 修复：底部黑色区域问题 - 通过设置透明导航栏和正确的布局标志
+ * 底部黑色区域问题 - 设置透明导航栏和正确的布局标志
  */
 public class KioskHelper {
     private static final String TAG = "KioskHelper";
@@ -77,10 +77,10 @@ public class KioskHelper {
                     try {
                         Window window = activity.getWindow();
 
-                        // 1. 设置窗口标志 - 全屏、常亮
+                        // 设置窗口标志 - 全屏、常亮
                         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-                        // 2. 关键修复：设置布局延伸到系统栏区域，避免黑色区域
+                        // 设置布局延伸到系统栏区域，避免黑色区域
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                             // 清除旧的全屏标志，使用新的沉浸式方式
                             window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -101,28 +101,28 @@ public class KioskHelper {
                             window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
                         }
 
-                        // 3. 针对刘海屏的处理 (Android P及以上)
+                        // 针对刘海屏的处理
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                             WindowManager.LayoutParams lp = window.getAttributes();
                             lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
                             window.setAttributes(lp);
                         }
 
-                        // 4. 隐藏系统UI
+                        // 隐藏系统UI
                         hideSystemUI(activity);
 
-                        // 5. 检查是否为Device Owner并启动锁定任务模式
+                        // 检查是否为Device Owner并启动锁定任务模式
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                             startLockTaskIfDeviceOwner(activity);
                         }
 
-                        // 6. 设置系统UI监听器
+                        // 设置系统UI监听器
                         setupSystemUIListener(activity);
 
-                        // 7. 启动前台监控
+                        // 启动前台监控
                         startFocusMonitor(activity);
 
-                        // 8. 多次延迟隐藏系统UI，确保完全生效
+                        // 多次延迟隐藏系统UI，确保完全生效
                         // 首次延迟100ms
                         handler.postDelayed(new Runnable() {
                             @Override
@@ -143,7 +143,7 @@ public class KioskHelper {
                             }
                         }, 500);
 
-                        // 三次延迟1000ms（应对某些慢速设备）
+                        // 三次延迟1000ms
                         handler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
@@ -198,7 +198,7 @@ public class KioskHelper {
     }
 
     /**
-     * 设置应用为默认启动器（Device Owner专用）
+     * 设置应用为默认启动器（Device Owner用）
      */
     private static void setAsDefaultLauncher(Activity activity, DevicePolicyManager dpm, ComponentName adminComponent) {
         try {
@@ -323,7 +323,7 @@ public class KioskHelper {
 
     /**
      * 隐藏系统UI（导航栏和状态栏）
-     * 修复：使用正确的标志组合，避免底部黑色区域
+     * 标志组合，避免底部黑色区域
      */
     public static void hideSystemUI(final Activity activity) {
         if (activity == null) return;
@@ -351,7 +351,7 @@ public class KioskHelper {
                                 | View.SYSTEM_UI_FLAG_FULLSCREEN
                                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
 
-                        // 低光模式 - 使导航栏图标变暗（某些设备上有效）
+                        // 低光模式 - 使导航栏图标变暗
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
                             uiOptions |= View.SYSTEM_UI_FLAG_LOW_PROFILE;
                         }
@@ -451,7 +451,7 @@ public class KioskHelper {
                 }
             }
 
-            // 备选方案：尝试使用Device Policy Manager的关机功能（需要Device Owner）
+            // 尝试使用Device Policy Manager的关机功能（需要Device Owner）
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 DevicePolicyManager dpm = (DevicePolicyManager) activity.getSystemService(Context.DEVICE_POLICY_SERVICE);
                 if (dpm != null && dpm.isDeviceOwnerApp(activity.getPackageName())) {
@@ -486,7 +486,7 @@ public class KioskHelper {
                         ComponentName adminComponent = new ComponentName(activity, MyDeviceAdminReceiver.class);
                         PackageManager pm = activity.getPackageManager();
 
-                        // 1. 禁用BootReceiver，防止开机自启动
+                        // 禁用BootReceiver，防止开机自启动
                         Log.i(TAG, "调试退出: 禁用BootReceiver");
                         try {
                             ComponentName bootReceiver = new ComponentName(activity, BootReceiver.class);
@@ -498,20 +498,20 @@ public class KioskHelper {
                         }
 
                         if (dpm != null && dpm.isDeviceOwnerApp(activity.getPackageName())) {
-                            // 2. 清除默认启动器设置 (解除 Device Owner 的强制 Home 设置)
+                            // 清除默认启动器设置 (解除 Device Owner 的强制 Home 设置)
                             Log.i(TAG, "调试退出: 清除默认启动器设置");
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                                 dpm.clearPackagePersistentPreferredActivities(adminComponent, activity.getPackageName());
                             }
 
-                            // 3. 清除Lock Task白名单
+                            // 清除Lock Task白名单
                             Log.i(TAG, "调试退出: 清除Lock Task白名单");
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                                 dpm.setLockTaskPackages(adminComponent, new String[]{});
                             }
                         }
 
-                        // 4. 停止Lock Task模式
+                        // 停止Lock Task模式
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                             try {
                                 activity.stopLockTask();
@@ -524,7 +524,7 @@ public class KioskHelper {
                         showSystemUI(activity);
 
                         // ==========================================
-                        // [关键修复] 跳转到系统设置，打断 Home 重启循环
+                        // 跳转到系统设置，打断 Home 重启循环
                         // ==========================================
                         try {
                             // 尝试打开"主屏幕应用"设置，让用户选择原生桌面
@@ -543,7 +543,7 @@ public class KioskHelper {
                             Log.e(TAG, "跳转系统设置失败: " + e.getMessage());
                         }
 
-                        // 5. 延迟退出，确保设置页面已经覆盖上来
+                        // 延迟退出，确保设置页面已经覆盖上来
                         handler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
