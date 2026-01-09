@@ -43,6 +43,8 @@ private:
     QQueue<QByteArray> m_queue;
     //QTimer m_timer;
     QTimer* m_timer = nullptr;
+
+    bool m_isFirstKeyFrameReceived = false;
 };
 
 #endif // VIDEODECODERWORKER_H

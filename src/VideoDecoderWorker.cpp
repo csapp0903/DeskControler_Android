@@ -6,9 +6,47 @@
 
 #define QUEUE_IMAGE 10
 
+// 手动分析H264数据流，判断是否包含关键帧(IDR或SPS)
+static bool isH264KeyFrame(const QByteArray &data) {
+    const uint8_t *bytes = reinterpret_cast<const uint8_t *>(data.constData());
+    int size = data.size();
+
+    // 只需要扫描前 100 个字节通常就足够找到 NAL 头了，为了保险扫描整个包
+    // H264 NAL起始码通常是 00 00 00 01 或 00 00 01
+    for (int i = 0; i < size - 4; ++i) {
+        if (bytes[i] == 0 && bytes[i+1] == 0) {
+            int nalTypeLocation = 0;
+            if (bytes[i+2] == 1) {
+                // 00 00 01 XX
+                nalTypeLocation = i + 3;
+            } else if (bytes[i+2] == 0 && bytes[i+3] == 1) {
+                // 00 00 00 01 XX
+                nalTypeLocation = i + 4;
+            }
+
+            if (nalTypeLocation > 0 && nalTypeLocation < size) {
+                // NAL Unit Type 位于字节的低 5 位
+                int type = bytes[nalTypeLocation] & 0x1F;
+
+                // Type 5: IDR(关键帧)
+                // Type 7: SPS(序列参数集，通常关键帧前会有这个)
+                if (type == 5 || type == 7) {
+                    return true;
+                }
+
+                // 跳过这个 NAL 头，继续寻找下一个
+                i = nalTypeLocation;
+            }
+        }
+    }
+    return false;
+}
+
 VideoDecoderWorker::VideoDecoderWorker(QObject* parent)
     : QObject(parent)
 {
+    m_isFirstKeyFrameReceived = false;
+
     // FFmpeg 初始化
     codec = avcodec_find_decoder(AV_CODEC_ID_H264);
     if (!codec)
@@ -135,14 +173,31 @@ void VideoDecoderWorker::cleanup()
 // }
 void VideoDecoderWorker::decodePacket(const QByteArray& packetData)
 {
+    // 如果还没收到过第一个关键帧，手动检查当前包是不是关键帧
+    if (!m_isFirstKeyFrameReceived) {
+        if (isH264KeyFrame(packetData)) {
+            m_isFirstKeyFrameReceived = true;
+            LogWidget::instance()->addLog("Received First Key Frame (IDR/SPS)!", LogWidget::Info);
+        } else {
+            // 如果不是关键帧，直接丢弃，防止绿屏
+            return;
+        }
+    }
+
     // 将 packetData 拷贝到 AVPacket
     AVPacket* pkt = av_packet_alloc();
     if (!pkt) {
         LogWidget::instance()->addLog(QString("Could not allocate AVPacket"), LogWidget::Warning);
         return;
     }
-    pkt->data = reinterpret_cast<uint8_t*>(const_cast<char*>(packetData.data()));
-    pkt->size = packetData.size();
+    // pkt->data = reinterpret_cast<uint8_t*>(const_cast<char*>(packetData.data()));
+    // pkt->size = packetData.size();
+    if (av_new_packet(pkt, packetData.size()) == 0) {
+        memcpy(pkt->data, packetData.constData(), packetData.size());
+    } else {
+        av_packet_free(&pkt);
+        return;
+    }
 
     int ret = avcodec_send_packet(codecCtx, pkt);
     if (ret < 0) {
@@ -166,12 +221,21 @@ void VideoDecoderWorker::decodePacket(const QByteArray& packetData)
         }
         // 得到解码帧（YUV420P）
 
+        // // 初始化转换上下文（如果还没创建）
+        // if (!swsCtx) {
+        //     swsCtx = sws_getContext(frame->width, frame->height, codecCtx->pix_fmt,
+        //                             frame->width, frame->height, AV_PIX_FMT_RGBA,
+        //                             SWS_BILINEAR, nullptr, nullptr, nullptr);
+        // }
         // 初始化转换上下文（如果还没创建）
         if (!swsCtx) {
+            // 将 SWS_BILINEAR 改为 SWS_POINT
+            // 将 SWS_POINT 改为 SWS_FAST_BILINEAR 消除锯齿
             swsCtx = sws_getContext(frame->width, frame->height, codecCtx->pix_fmt,
                                     frame->width, frame->height, AV_PIX_FMT_RGBA,
-                                    SWS_BILINEAR, nullptr, nullptr, nullptr);
+                                    SWS_POINT, nullptr, nullptr, nullptr);
         }
+
         // 计算目标缓冲区大小
         int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGBA, frame->width, frame->height, 1);
         QByteArray imgBuffer(numBytes, 0);
