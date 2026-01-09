@@ -93,6 +93,12 @@ void VideoReceiver::onNetworkError(const QString& err)
 
 void VideoReceiver::mouseEventCaptured(int x, int y, int mask, int value)
 {
+    // --- 添加日志 ---
+    LogWidget::instance()->addLog(
+        QString("[Android-Input] Sending Mouse: x=%1, y=%2").arg(x).arg(y),
+        LogWidget::Info
+        );
+
     QMetaObject::invokeMethod(m_netWorker, "sendMouseEventToServer", Qt::QueuedConnection,
                               Q_ARG(int, x),
                               Q_ARG(int, y),

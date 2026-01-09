@@ -173,6 +173,9 @@ void VideoDecoderWorker::cleanup()
 // }
 void VideoDecoderWorker::decodePacket(const QByteArray& packetData)
 {
+    QElapsedTimer timer;
+    timer.start(); // 开始计时
+
     // 如果还没收到过第一个关键帧，手动检查当前包是不是关键帧
     if (!m_isFirstKeyFrameReceived) {
         if (isH264KeyFrame(packetData)) {
@@ -233,7 +236,7 @@ void VideoDecoderWorker::decodePacket(const QByteArray& packetData)
             // 将 SWS_POINT 改为 SWS_FAST_BILINEAR 消除锯齿
             swsCtx = sws_getContext(frame->width, frame->height, codecCtx->pix_fmt,
                                     frame->width, frame->height, AV_PIX_FMT_RGBA,
-                                    SWS_POINT, nullptr, nullptr, nullptr);
+                                    SWS_BILINEAR, nullptr, nullptr, nullptr);
         }
 
         // 计算目标缓冲区大小
@@ -261,6 +264,16 @@ void VideoDecoderWorker::decodePacket(const QByteArray& packetData)
     }
 
     av_packet_free(&pkt);
+
+    // --- 添加日志 ---
+    // 在解码完成并发射信号前（emit frameDecoded(image) 之前）
+    LogWidget::instance()->addLog(
+        QString("[Android-Decoder] RecvSize: %1, DecodeCost: %2 ms, QueueSize: %3")
+            .arg(packetData.size())
+            .arg(timer.elapsed())
+            .arg(m_queue.size()), // 监控队列是否积压
+        LogWidget::Info
+        );
 }
 
 void VideoDecoderWorker::decodePacket1(const QByteArray& packetData)
